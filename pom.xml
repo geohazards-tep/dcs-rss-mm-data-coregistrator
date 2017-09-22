@@ -15,13 +15,13 @@
   <properties>
     <summary>Multi mission data co-registrator</summary>
     <description>This service performs the coregistration of remote sensing data from different missions</description>
-    <community>dcs-rss-mm-data-coregistrator</community>
-    <yumRepo>dcs-rss-mm-data-coregistrator</yumRepo>
+    <community>geohazards-tep</community>
+    <yumRepo>geohazards-tep</yumRepo>
   </properties>
   <scm>
-    <connection>scm:git:ssh://git@github.com/dcs-rss-mm-data-coregistrator/dcs-rss-mm-data-coregistrator</connection>
-    <developerConnection>scm:git:ssh://git@github.com/dcs-rss-mm-data-coregistrator/dcs-rss-mm-data-coregistrator</developerConnection>
-    <url>https://github.com/dcs-rss-mm-data-coregistrator/dcs-rss-mm-data-coregistrator</url>
+    <connection>scm:git:ssh://git@github.com/geohazards-tep/dcs-rss-mm-data-coregistrator</connection>
+    <developerConnection>scm:git:ssh://git@github.com/geohazards-tep/dcs-rss-mm-data-coregistrator</developerConnection>
+    <url>https://github.com/geohazards-tep/dcs-rss-mm-data-coregistrator</url>
     <tag>HEAD</tag>
   </scm>
   <profiles>
@@ -47,7 +47,7 @@
                 <configuration>
                   <!-- Set here the dependencies installed with 'sudo yum install'-->
                   <requires>
-                    <require>bash</require>
+                    <require>snap = 5.0-1.el6</require>
                   </requires>
                 </configuration>
               </execution>
