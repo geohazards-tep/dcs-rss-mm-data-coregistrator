@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>com.terradue</groupId>
+  <artifactId>dcs-rss-mm-data-coregistrator</artifactId>
+  <packaging>pom</packaging>
+  <name>dcs-rss-mm-data-coregistrator</name>
+  <parent>
+    <groupId>com.terradue</groupId>
+    <artifactId>dcs-bash-parent</artifactId>
+    <version>2.0.0</version>
+  </parent>
+  <description>This service performs the coregistration of remote sensing data from different missions</description>
+  <version>1.0-BETA</version>
+  <properties>
+    <summary>Multi mission data co-registrator</summary>
+    <description>This service performs the coregistration of remote sensing data from different missions</description>
+    <community>dcs-rss-mm-data-coregistrator</community>
+    <yumRepo>dcs-rss-mm-data-coregistrator</yumRepo>
+  </properties>
+  <scm>
+    <connection>scm:git:ssh://git@github.com/dcs-rss-mm-data-coregistrator/dcs-rss-mm-data-coregistrator</connection>
+    <developerConnection>scm:git:ssh://git@github.com/dcs-rss-mm-data-coregistrator/dcs-rss-mm-data-coregistrator</developerConnection>
+    <url>https://github.com/dcs-rss-mm-data-coregistrator/dcs-rss-mm-data-coregistrator</url>
+    <tag>HEAD</tag>
+  </scm>
+  <profiles>
+    <profile>
+      <id>package-app</id>
+      <activation>
+         <property>
+           <name>env</name>
+           <value>ci</value>
+         </property>
+      </activation>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.codehaus.mojo</groupId>
+            <artifactId>rpm-maven-plugin</artifactId>
+            <executions>
+              <execution>
+                <id>generate-rpm</id>
+                <goals>
+                  <goal>rpm</goal>
+                </goals>
+                <configuration>
+                  <!-- Set here the dependencies installed with 'sudo yum install'-->
+                  <requires>
+                    <require>bash</require>
+                  </requires>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
+</project>
