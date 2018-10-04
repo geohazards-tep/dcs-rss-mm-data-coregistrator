@@ -38,3 +38,8 @@ ehthumbs.db
 Thumbs.db
 
 target
+*.docx
+.idea/dcs-rss-mm-data-coregistrator.iml
+.idea/misc.xml
+.idea/modules.xml
+.idea/workspace.xml

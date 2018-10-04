@@ -68,10 +68,12 @@ function check_product_type() {
   local productName=$( basename "$retrievedProduct")
   
   if [ ${mission} = "Sentinel-1"  ] ; then
-      #productName assumed like S1A_IW_TTT* where TTT is the product type to be extracted
-      prodTypeName=$( echo ${productName:7:3} )
+      #productName assumed like S1A_IW_TTTT_* where TTTT is the product type to be extracted
+      prodTypeName=$( echo ${productName:7:4} )
       [ -z "${prodTypeName}" ] && return ${ERR_GETPRODTYPE}
-      [ $prodTypeName != "GRD" ] && return $ERR_WRONGPRODTYPE
+      if [ $prodTypeName != "GRDH" ] && [ $prodTypeName != "GRDM" ]; then
+          return $ERR_WRONGPRODTYPE
+      fi
   fi
 
   if [ ${mission} = "Sentinel-2"  ] ; then
@@ -103,17 +105,24 @@ function check_product_type() {
       prodTypeName=""
       #Extract metadata file from Landsat
       filename="${retrievedProduct##*/}"; ext="${filename#*.}"
-      if [[ "$ext" == "tar.bz" ]]; then
-          tar xjf $retrievedProduct ${filename%%.*}_MTL.txt
+      if [[ "$ext" == "tar.bz" || "$ext" == "tar" ]]; then
+          #tar xf $retrievedProduct ${filename%%.*}_MTL.txt
+          mtdfile="$( tar xf $retrievedProduct -v --wildcards "*_MTL.txt")"
           returnCode=$?
           [ $returnCode -eq 0 ] || return ${ERR_GETPRODTYPE}
-          [[ -e "${filename%%.*}_MTL.txt" ]] || return ${ERR_GETPRODTYPE}
-          prodTypeName=$(sed -n -e 's|^.*DATA_TYPE.*\"\(.*\)\".*$|\1|p' ${filename%%.*}_MTL.txt)
-          rm -f ${filename%%.*}_MTL.txt
+          [[ -e "${mtdfile}" ]] || return ${ERR_GETPRODTYPE}                        
+          prodTypeName=$(sed -n -e 's|^.*DATA_TYPE.*\"\(.*\)\".*$|\1|p' ${mtdfile}) 
+          rm -f ${mtdfile}
+          #[ $returnCode -eq 0 ] || return ${ERR_GETPRODTYPE} 
+          #[[ -e "${filename%%.*}_MTL.txt" ]] || return ${ERR_GETPRODTYPE}
+          #prodTypeName=$(sed -n -e 's|^.*DATA_TYPE.*\"\(.*\)\".*$|\1|p' ${filename%%.*}_MTL.txt)
+          #rm -f ${filename%%.*}_MTL.txt
       else
-          metadatafile=$(ls ${retrievedProduct}/vendor_metadata/*_MTL.txt)
+          ciop-log "INFO" "We are here ${retrievedProduct}"
+          metadatafile=$(ls ${retrievedProduct}/*_MTL.txt)
           [[ -e "${metadatafile}" ]] || return ${ERR_GETPRODTYPE}
           prodTypeName=$(sed -n -e 's|^.*DATA_TYPE.*\"\(.*\)\".*$|\1|p' ${metadatafile})
+          ciop-log "INFO" "prodtype: ${prodTypeName}"
       fi
       if [[ "$prodTypeName" != "L1TP" ]] && [[ "$prodTypeName" != "L1T" ]]; then
           return $ERR_WRONGPRODTYPE
@@ -190,10 +199,31 @@ function get_pixel_spacing() {
 
 # function call get_pixel_size "${mission}" 
 local mission=$1
+local prodname=$2
+local prodType=$3
 
 case "$mission" in
         "Sentinel-1")
-            echo 10
+	    acqMode=$(get_s1_acq_mode "${prodname}")
+	    if [ "${acqMode}" == "EW" ]; then
+	        if [ "${prodType}" == "GRDH" ]; then
+		    echo 25
+		elif [ "${prodType}" == "GRDM" ]; then
+		    echo 40
+		else
+		    return ${ERR_GETPIXELSPACING}
+		fi
+            elif [ "${acqMode}" == "IW" ]; then
+		if [ "${prodType}" == "GRDH" ]; then
+		    echo 10
+                elif [ "${prodType}" == "GRDM" ]; then
+		    echo 40
+                else
+                    return ${ERR_GETPIXELSPACING}
+                fi
+            else
+		return ${ERR_GETPIXELSPACING}
+	    fi
             ;;
 
         "Sentinel-2")
@@ -223,6 +253,17 @@ esac
 
 return 0
 
+}
+
+
+# function that gets the Sentinel-1 acquisition mode from product name
+function get_s1_acq_mode(){
+# function call get_s1_acq_mode "${prodname}"
+local prodname=$1
+# filename convention assumed like S1A_AA_* where AA is the acquisition mode to be extracted
+acqMode=$( echo ${prodname:4:2} )
+echo ${acqMode}
+return 0
 }
 
 
@@ -753,22 +794,22 @@ if [ ${mission} = "Landsat-8" ]; then
     #Check if downloaded product is compressed and extract it
     ext="${prodname##*/}"; ext="${ext#*.}"
     ciop-log "INFO" "Product extension is: $ext"
-    if [[ "$ext" == "tar.bz" ]]; then
+    if [ "$ext" == "tar.bz" ] || [ "$ext" == "tar" ]; then
         ciop-log "INFO" "Extracting $prodname"
         currentBasename=$(basename $prodname)
         currentBasename="${currentBasename%%.*}"
         mkdir -p ${prodname%/*}/${currentBasename}
         cd ${prodname%/*}
         filename="${prodname##*/}"
-        tar xjf $filename -C ${currentBasename}
+        tar xf $filename -C ${currentBasename}
         returnCode=$?
         [ $returnCode -eq 0 ] || return ${ERR_UNPACKING}
         prodname=${prodname%/*}/${currentBasename}
-	ls "${prodname}"/LC8*_B[1-7].TIF > $tifList
-	ls "${prodname}"/LC8*_B9.TIF >> $tifList
-	ls "${prodname}"/LC8*_B1[0,1].TIF >> $tifList
+        ls "${prodname}"/LC*_B[1-7].TIF > $tifList
+        ls "${prodname}"/LC*_B9.TIF >> $tifList
+        ls "${prodname}"/LC*_B1[0,1].TIF >> $tifList
     else
-	ls "${prodname}"/LS08*_B[0-1][0-7,9].TIF > $tifList
+        ls "${prodname}"/LS08*_B[0-1][0-7,9].TIF > $tifList
     fi
 elif [ ${mission} = "Kompsat-2" ]; then
     ls "${prodname}"/MSC_*[R,G,B,N]_1G.tif > $tifList
@@ -1425,7 +1466,7 @@ function main() {
 	# report activity in the log      
 	ciop-log "INFO" "Getting pixel spacing from mission identifier"
         #get pixel spacing from mission identifier
-        pixelSpacing=$( get_pixel_spacing "${mission}")
+        pixelSpacing=$( get_pixel_spacing "${mission}" "${prodname}" "${prodType}")
         returnCode=$?
         [ $returnCode -eq 0 ] || return $returnCode
         if [ $isMaster -eq 1 ] ; then
