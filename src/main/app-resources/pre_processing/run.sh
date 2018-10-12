@@ -357,17 +357,17 @@ case "$mission" in
             ;;
 
         "SPOT-6")
-            pre_processing_generic_optical "${prodname}" "${mission}" "${pixelSpacing}" "${pixelSpacingMaster}" "${performCropping}" "${subsettingBoxWKT}"
+            pre_processing_spot_pleiades "${prodname}" "${mission}" "${pixelSpacing}" "${pixelSpacingMaster}" "${performCropping}" "${subsettingBoxWKT}"
                 return $?
                 ;;
 
         "SPOT-7")
-            pre_processing_generic_optical "${prodname}" "${mission}" "${pixelSpacing}" "${pixelSpacingMaster}" "${performCropping}" "${subsettingBoxWKT}"
+            pre_processing_spot_pleiades "${prodname}" "${mission}" "${pixelSpacing}" "${pixelSpacingMaster}" "${performCropping}" "${subsettingBoxWKT}"
                 return $?
                 ;;
 
         "PLEIADES")
-            pre_processing_generic_optical "${prodname}" "${mission}" "${pixelSpacing}" "${pixelSpacingMaster}" "${performCropping}" "${subsettingBoxWKT}"
+            pre_processing_spot_pleiades "${prodname}" "${mission}" "${pixelSpacing}" "${pixelSpacingMaster}" "${performCropping}" "${subsettingBoxWKT}"
                 return $?
                 ;;
 
@@ -854,6 +854,173 @@ cd -
 
 }
 
+# generic optical mission (not fully supported by SNAP) pre processing function
+function pre_processing_spot_pleiades() {
+
+# function call pre_processing_generic_optical "${prodname}" "${mission}" "${pixelSpacing}" "${pixelSpacingMaster}" "${performCropping}" "${subsettingBoxWKT}"
+
+inputNum=$#
+[ "$inputNum" -ne 6 ] && return ${ERR_PREPROCESS}
+
+local prodname=$1
+local mission=$2
+local pixelSpacing=$3
+local pixelSpacingMaster=$4
+local performCropping=$5
+local subsettingBoxWKT=$6
+prodBasename=$(basename ${prodname})
+
+# loop to fill contained TIFs and their basenames
+local tifList=${TMPDIR}/tifList.txt
+local filesListCSV=""
+targetBandsNamesListTXT=${TMPDIR}/targetBandsNamesList.txt
+local index=0
+
+imgExt=".tif"
+if [[ -d "${prodname}" ]]; then
+  jp2_product=""
+  # Get multispectral image file
+  if [ ${mission} = "PLEIADES" ]; then
+      jp2_product=$(find ${prodname}/ -name 'IMG_*MS_*.JP2')
+  else
+      # SPOT case
+      jp2_product=$(find ${prodname}/ -name 'IMG_SPOT?_*MS_*.JP2')
+  fi
+  # convert ssv to array
+  declare -a jp2_product_arr=(${jp2_product})
+  # get number of bands
+  local numProd=${#jp2_product_arr[@]}
+  [ $numProd -eq 0  ] && return ${ERR_CONVERT}
+  local prodId=0
+  let "numProd-=1"
+  for prodId in `seq 0 $numProd`; do
+    currentProd=${jp2_product_arr[$prodId]}
+    imgsLocation=$( dirname ${jp2_product} )
+    #move into current product folder
+    cd ${imgsLocation}
+    #set output filename
+    outputfile="${currentProd##*/}"; outputfile="${outputfile%.JP2}.tif"
+    #run OTB optical calibration
+    ciop-log "INFO" "Performing image calibration to ${outputfile}"
+    otbcli_OpticalCalibration -in ${currentProd} -out ${outputfile} -ram ${RAM_AVAILABLE}
+    returnCode=$?
+    [ $returnCode -eq 0 ] || return ${ERR_OTB}
+    imgFile=${outputfile}
+  done
+  #If tiles exist merge all tiles
+  tilesNum=$( get_num_tiles ${prodname} )
+  if [ ${tilesNum} -gt 1 ]; then
+      ciop-log "INFO" "The image is divided into ${tilesNum} tiles"
+      imgFile1=(${imgFile})
+      untiledImgFile="${imgFile1##*/}"; untiledImgFile="${untiledImgFile%_R?C?.JP2}.tif"
+      untiledVrtFile="${untiledImgFile%.tif}.vrt"
+      ciop-log "INFO" "Performing image fusion to ${untiledVrtFile}"
+      gdalbuildvrt ${untiledVrtFile} ${imgFile}
+      imgFile=${untiledVrtFile}
+      imgExt=".vrt"
+  fi
+fi
+
+# set output calibrated filename
+outputCal=${outputfile}
+outputCalDIM="${outputCal%.tif}.dim"
+# convert tif to beam dimap format
+ciop-log "INFO" "Invoking SNAP-pconvert on the generated request file for tif to dim conversion"
+pconvert -f dim ${outputCal}
+# remove intermediate calibrated file
+rm ${outputCal}
+currentBandsList=$( xmlstarlet sel -t -v "/Dimap_Document/Image_Interpretation/Spectral_Band_Info/BAND_NAME" ${outputCalDIM} )
+currentBandsList=(${currentBandsList})
+currentBandsList_num=${#currentBandsList[@]}
+currentBandsListTXT=${TMPDIR}/currentBandsList.txt
+# loop on band names to fill band list
+let "currentBandsList_num-=1"
+for index in `seq 0 $currentBandsList_num`;
+do
+    if [ $index -eq 0  ] ; then
+        echo ${currentBandsList[${index}]} > ${currentBandsListTXT}
+    else
+        echo  ${currentBandsList[${index}]} >> ${currentBandsListTXT}
+    fi
+done
+# loop over known product bands to fill target bands list
+targetBandsNamesListTXT=${TMPDIR}/targetBandsNamesList.txt
+# source bands list for Pleiades
+sourceBandsList=$(get_band_list "${prodBasename}" "${mission}" )
+# convert band from comma separted values to space separated values
+bandListSsv=$( echo "${sourceBandsList}" | sed 's|,| |g' )
+# convert ssv to array
+declare -a bandListArray=(${bandListSsv})
+# get number of bands
+numBands=${#bandListArray[@]}
+local bid=0
+let "numBands-=1"
+for bid in `seq 0 $numBands`; do
+    if [ $bid -eq 0  ] ; then
+        echo ${bandListArray[$bid]} > ${targetBandsNamesListTXT}
+    else
+        echo ${bandListArray[$bid]} >> ${targetBandsNamesListTXT}
+    fi
+done
+
+# build request file for rename all the bands contained into the stack product
+# report activity in the log
+outProdRename=${TMPDIR}/stack_renamed_bands
+ciop-log "INFO" "Preparing SNAP request file for bands renaming"
+# prepare the SNAP request
+SNAP_REQUEST=$( create_snap_request_rename_all_bands "${outputCalDIM}" "${currentBandsListTXT}" "${targetBandsNamesListTXT}" "${outProdRename}")
+[ $? -eq 0 ] || return ${SNAP_REQUEST_ERROR}
+[ $DEBUG -eq 1 ] && cat ${SNAP_REQUEST}
+# report activity in the log
+ciop-log "INFO" "Generated request file: ${SNAP_REQUEST}"
+# report activity in the log
+ciop-log "INFO" "Invoking SNAP-gpt on the generated request file bands renaming"
+# invoke the ESA SNAP toolbox
+gpt $SNAP_REQUEST -c "${CACHE_SIZE}" &> /dev/null
+# check the exit code
+[ $? -eq 0 ] || return $ERR_SNAP
+rm -rf ${outProdStack}.d*
+
+# use the greter pixel spacing as target spacing (in order to downsample if needed, upsampling always avoided)
+local target_spacing=$( get_greater_pixel_spacing ${pixelSpacing} ${pixelSpacingMaster} )
+# check for resampling operator: to be used only if the resolution is differenet from the current product one
+local performResample=""
+if (( $(bc <<< "$target_spacing != $pixelSpacing") )) ; then
+    performResample="true"
+else
+    performResample="false"
+fi
+outProdBasename=$(basename ${prodname})_pre_proc
+outProd=${TMPDIR}/${outProdBasename}
+
+# report activity in the log
+ciop-log "INFO" "Preparing SNAP request file for optical data pre processing"
+# source bands list for
+sourceBandsList=""
+# prepare the SNAP request
+SNAP_REQUEST=$( create_snap_request_rsmpl_rprj_sbs "${outProdRename}.dim" "${performResample}" "${target_spacing}" "${performCropping}" "${subsettingBoxWKT}" "${sourceBandsList}" "${outProd}")
+[ $? -eq 0 ] || return ${SNAP_REQUEST_ERROR}
+[ $DEBUG -eq 1 ] && cat ${SNAP_REQUEST}
+# report activity in the log
+ciop-log "INFO" "Generated request file: ${SNAP_REQUEST}"
+
+# report activity in the log
+ciop-log "INFO" "Invoking SNAP-gpt on the generated request file for optical data pre processing"
+# invoke the ESA SNAP toolbox
+gpt $SNAP_REQUEST -c "${CACHE_SIZE}" &> /dev/null
+# check the exit code
+[ $? -eq 0 ] || return $ERR_SNAP
+
+# create a tar archive where DIM output product is stored and put it in OUTPUT dir
+cd ${TMPDIR}
+tar -cf ${outProdBasename}.tar ${outProdBasename}.d*
+#tar -cjf ${outProdBasename}.tar -C ${TMPDIR} .
+mv ${outProdBasename}.tar ${OUTPUTDIR}
+rm -rf ${outProdBasename}.d*
+rm -rf ${outProdRename}.d*
+cd
+
+}
 
 # generic optical mission (not fully supported by SNAP) pre processing function
 function pre_processing_generic_optical() {
@@ -904,143 +1071,55 @@ elif [ ${mission} = "Kompsat-2" ]; then
     ls "${prodname}"/MSC_*[R,G,B,N]_1G.tif > $tifList
 elif [ ${mission} = "Kompsat-3" ]; then
     ls "${prodname}"/K3_*_L1G_[R,G,B,N]*.tif > $tifList
-elif [ ${mission} = "PLEIADES" ] || [ ${mission} = "SPOT-6" ] || [ ${mission} = "SPOT-7" ]; then
-  imgExt=".tif"
-  if [[ -d "${prodname}" ]]; then
-      jp2_product=""
-      # Get multispectral image file
-      if [ ${mission} = "PLEIADES" ]; then
-          jp2_product=$(find ${prodname}/ -name 'IMG_*MS_*.JP2')
-      else
-          # SPOT case
-          jp2_product=$(find ${prodname}/ -name 'IMG_SPOT?_*MS_*.JP2')
-      fi
-      # convert ssv to array
-      declare -a jp2_product_arr=(${jp2_product})
-      # get number of bands
-      local numProd=${#jp2_product_arr[@]}
-      [ $numProd -eq 0  ] && return ${ERR_CONVERT}
-      local prodId=0
-      let "numProd-=1"
-      for prodId in `seq 0 $numProd`; do
-        currentProd=${jp2_product_arr[$prodId]}
-        imgsLocation=$( dirname ${jp2_product} )
-        #move into current product folder
-        cd ${imgsLocation}
-        #set output filename
-        outputfile="${currentProd##*/}"; outputfile="${outputfile%.JP2}.tif"
-        #run OTB optical calibration
-        ciop-log "INFO" "Performing image calibration to ${outputfile}"
-        otbcli_OpticalCalibration -in ${currentProd} -out ${outputfile} -ram ${RAM_AVAILABLE}
-        returnCode=$?
-        [ $returnCode -eq 0 ] || return ${ERR_OTB}
-        imgFile=${outputfile}
-      done
-      #If tiles exist merge all tiles
-      tilesNum=$( get_num_tiles ${prodname} )
-      if [ ${tilesNum} -gt 1 ]; then
-          ciop-log "INFO" "The image is divided into ${tilesNum} tiles"
-          imgFile1=(${imgFile})
-          untiledImgFile="${imgFile1##*/}"; untiledImgFile="${untiledImgFile%_R?C?.JP2}.tif"
-          untiledVrtFile="${untiledImgFile%.tif}.vrt"
-          ciop-log "INFO" "Performing image fusion to ${untiledVrtFile}"
-          gdalbuildvrt ${untiledVrtFile} ${imgFile}
-          imgFile=${untiledVrtFile}
-          imgExt=".vrt"
-      fi
-  fi
 else
     return ${ERR_PREPROCESS}
 fi
 
-if [ ${mission} = "PLEIADES" ] || [ ${mission} = "SPOT-6" ] || [ ${mission} = "SPOT-7" ]; then
-    # set output calibrated filename
-    outputCal=${outputfile}
-    outputCalDIM="${outputCal%.tif}.dim"
-    # convert tif to beam dimap format
-    ciop-log "INFO" "Invoking SNAP-pconvert on the generated request file for tif to dim conversion"
-    pconvert -f dim ${outputCal}
-    # remove intermediate calibrated file
-    rm ${outputCal}
-    currentBandsList=$( xmlstarlet sel -t -v "/Dimap_Document/Image_Interpretation/Spectral_Band_Info/BAND_NAME" ${outputCalDIM} )
-    currentBandsList=(${currentBandsList})
-    currentBandsList_num=${#currentBandsList[@]}
-    currentBandsListTXT=${TMPDIR}/currentBandsList.txt
-    # loop on band names to fill band list
-    let "currentBandsList_num-=1"
-    for index in `seq 0 $currentBandsList_num`;
-    do
-        if [ $index -eq 0  ] ; then
-            echo ${currentBandsList[${index}]} > ${currentBandsListTXT}
-        else
-            echo  ${currentBandsList[${index}]} >> ${currentBandsListTXT}
-        fi
-    done
-    # loop over known product bands to fill target bands list
-    targetBandsNamesListTXT=${TMPDIR}/targetBandsNamesList.txt
-    # source bands list for Pleiades
-    sourceBandsList=$(get_band_list "${prodBasename}" "${mission}" )
-    # convert band from comma separted values to space separated values
-    bandListSsv=$( echo "${sourceBandsList}" | sed 's|,| |g' )
-    # convert ssv to array
-    declare -a bandListArray=(${bandListSsv})
-    # get number of bands
-    numBands=${#bandListArray[@]}
-    local bid=0
-    let "numBands-=1"
-    for bid in `seq 0 $numBands`; do
-        if [ $bid -eq 0  ] ; then
-            echo ${bandListArray[$bid]} > ${targetBandsNamesListTXT}
-        else
-            echo ${bandListArray[$bid]} >> ${targetBandsNamesListTXT}
-        fi
-    done
-else
-    for tif in $(cat "${tifList}"); do
-        basenameNoExt=$(basename "$tif")
-        basenameNoExt="${basenameNoExt%.*}"
-        if [ $index -eq 0  ] ; then
-            filesListCSV=$tif
-            echo ${basenameNoExt} > ${targetBandsNamesListTXT}
-        else
-            filesListCSV=$filesListCSV,$tif
-            echo ${basenameNoExt} >> ${targetBandsNamesListTXT}
-        fi
-        let "index=index+1"
-    done
-    # number of product equal to the last index value due to how the loop works
-    numProd=$index
-    # report activity in the log
-    ciop-log "INFO" "Preparing SNAP request file for products stacking"
-    # output prodcut name
-    outProdStack=${TMPDIR}/stack_product
-    # prepare the SNAP request
-    SNAP_REQUEST=$( create_snap_request_stack "${filesListCSV}" "${outProdStack}" "${numProd}" )
-    [ $? -eq 0 ] || return ${SNAP_REQUEST_ERROR}
-    [ $DEBUG -eq 1 ] && cat ${SNAP_REQUEST}
-    # report activity in the log
-    ciop-log "INFO" "Invoking SNAP-gpt request file for products stacking"
-    # invoke the ESA SNAP toolbox
-    gpt $SNAP_REQUEST -c "${CACHE_SIZE}" &> /dev/null
-    # check the exit code
-    [ $? -eq 0 ] || return $ERR_SNAP
-    # get band names
-    outputCalDIM=${outProdStack}.dim
-    currentBandsList=$( xmlstarlet sel -t -v "/Dimap_Document/Image_Interpretation/Spectral_Band_Info/BAND_NAME" ${outputCalDIM} )
-    currentBandsList=(${currentBandsList})
-    currentBandsList_num=${#currentBandsList[@]}
-    currentBandsListTXT=${TMPDIR}/currentBandsList.txt
-    # loop on band names to fill band list
-    let "currentBandsList_num-=1"
-    for index in `seq 0 $currentBandsList_num`;
-    do
-        if [ $index -eq 0  ] ; then
-            echo ${currentBandsList[${index}]} > ${currentBandsListTXT}
-        else
-            echo  ${currentBandsList[${index}]} >> ${currentBandsListTXT}
-        fi
-    done
-fi
+for tif in $(cat "${tifList}"); do
+    basenameNoExt=$(basename "$tif")
+    basenameNoExt="${basenameNoExt%.*}"
+    if [ $index -eq 0  ] ; then
+        filesListCSV=$tif
+        echo ${basenameNoExt} > ${targetBandsNamesListTXT}
+    else
+        filesListCSV=$filesListCSV,$tif
+        echo ${basenameNoExt} >> ${targetBandsNamesListTXT}
+    fi
+    let "index=index+1"
+done
+# number of product equal to the last index value due to how the loop works
+numProd=$index
+# report activity in the log
+ciop-log "INFO" "Preparing SNAP request file for products stacking"
+# output prodcut name
+outProdStack=${TMPDIR}/stack_product
+# prepare the SNAP request
+SNAP_REQUEST=$( create_snap_request_stack "${filesListCSV}" "${outProdStack}" "${numProd}" )
+[ $? -eq 0 ] || return ${SNAP_REQUEST_ERROR}
+[ $DEBUG -eq 1 ] && cat ${SNAP_REQUEST}
+# report activity in the log
+ciop-log "INFO" "Invoking SNAP-gpt request file for products stacking"
+# invoke the ESA SNAP toolbox
+gpt $SNAP_REQUEST -c "${CACHE_SIZE}" &> /dev/null
+# check the exit code
+[ $? -eq 0 ] || return $ERR_SNAP
+# get band names
+outputCalDIM=${outProdStack}.dim
+currentBandsList=$( xmlstarlet sel -t -v "/Dimap_Document/Image_Interpretation/Spectral_Band_Info/BAND_NAME" ${outputCalDIM} )
+currentBandsList=(${currentBandsList})
+currentBandsList_num=${#currentBandsList[@]}
+currentBandsListTXT=${TMPDIR}/currentBandsList.txt
+# loop on band names to fill band list
+let "currentBandsList_num-=1"
+for index in `seq 0 $currentBandsList_num`;
+do
+    if [ $index -eq 0  ] ; then
+        echo ${currentBandsList[${index}]} > ${currentBandsListTXT}
+    else
+        echo  ${currentBandsList[${index}]} >> ${currentBandsListTXT}
+    fi
+done
+
 
 # build request file for rename all the bands contained into the stack product
 # report activity in the log
@@ -1663,7 +1742,6 @@ function main() {
 
         # report activity in the log
         ciop-log "INFO" "Running pre-processing for ${prodname}"
-        ciop-log "INFO" "current dir $( pwd )"
         pre_processing "${retrievedProduct}" "${mission}" "${pixelSpacing}" "${pixelSpacingMaster}" "${performCropping}" "${subsettingBoxWKT}"
         returnCode=$?
         [ $returnCode -eq 0 ] || return $returnCode
@@ -1671,7 +1749,6 @@ function main() {
         # NOTE: it is assumed that the "pre_processing" function always provides results in tar format in $OUTPUTDIR
         # report activity in the log
         ciop-log "INFO" "Publishing results for ${prodname}"
-        ciop-log "INFO" "current dir $( pwd )"
         # if master rename the tar output to allow following processing to identify it
         if [ $isMaster -eq 1 ] ; then
 	    out_prodname=$( ls "${OUTPUTDIR}"/*.tar )
