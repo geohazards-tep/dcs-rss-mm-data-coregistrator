@@ -141,7 +141,7 @@ function check_product_type() {
           return $ERR_WRONGPRODTYPE
       fi
   fi
-  if [[ "${mission}" == "SPOT-6" ]] || [[ "${mission}" == "SPOT-7"  ]] || [[ "${mission}" == "Pleiades"  ]]; then
+  if [[ "${mission}" == "SPOT-6" ]] || [[ "${mission}" == "SPOT-7"  ]] || [[ "${mission}" == "PLEIADES"  ]]; then
         spot_xml=$(find ${retrievedProduct}/ -name 'DIM_*MS_*.XML')
         prodTypeName=$(sed -n -e 's|^.*<DATASET_TYPE>\(.*\)</DATASET_TYPE>$|\1|p' ${spot_xml})
         [[ "$prodTypeName" != "RASTER_ORTHO" ]] && return $ERR_WRONGPRODTYPE
@@ -196,7 +196,7 @@ function mission_prod_retrieval(){
         [ "${prod_basename_substr_3}" = "LC8" ] && mission="Landsat-8"
         [ "${prod_basename_substr_4}" = "LS08" ] && mission="Landsat-8"
         [ "${prod_basename_substr_4}" = "MSC_" ] && mission="Kompsat-2"
-        [ "${prod_basename_substr_4}" = "FCGC" ] && mission="Pleiades"
+        [ "${prod_basename_substr_4}" = "FCGC" ] && mission="PLEIADES"
         [ "${prod_basename_substr_5}" = "U2007" ] && mission="UK-DMC2"
         [ "${prod_basename_substr_5}" = "ORTHO" ] && mission="UK-DMC2"
         [ "${prod_basename}" = "Resurs-P" ] && mission="Resurs-P"
@@ -209,8 +209,8 @@ function mission_prod_retrieval(){
         spot7_test=$(echo "${prod_basename}" | grep "SPOT7")
         [[ -z "${spot7_test}" ]] && spot7_test=$(ls "${retrievedProduct}" | grep "SPOT7")
         [ "${spot7_test}" = "" ] || mission="SPOT-7"
-        pleiades_test=$(echo "${prod_basename}" | grep "PLEIADES")
-        [[ -z "${pleiades_test}" ]] && pleiades_test=$(ls "${retrievedProduct}" | grep "PLEIADES")
+        pleiades_test=$(echo "${prod_basename}" | grep "PHR")
+        [[ -z "${pleiades_test}" ]] && pleiades_test=$(ls "${retrievedProduct}" | grep "PHR")
         [ "${pleiades_test}" = "" ] || mission="PLEIADES"
         if [ "${mission}" != "" ] ; then
             echo ${mission}
@@ -386,7 +386,7 @@ local prodname=$1
 local mission=$2
 local bandListCsv=""
 case "$mission" in
-        "Pleiades")
+        "PLEIADES")
             bandListCsv="Blue,Green,Red,NIR"
             ;;
 
