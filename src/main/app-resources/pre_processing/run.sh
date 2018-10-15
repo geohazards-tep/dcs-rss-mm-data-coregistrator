@@ -11,6 +11,12 @@ source $_CIOP_APPLICATION_PATH/otb/otb_include.sh
 #export PATH=${SNAP_HOME}/bin:${PATH}
 source $_CIOP_APPLICATION_PATH/gpt/snap_include.sh
 
+## put /opt/anaconda/bin ahead to the PATH list to ensure gdal to point to the anaconda installation dir
+export PATH=/opt/anaconda/bin:${PATH}
+
+
+#chmod -R 0755 /data/CHARTER_ID668_AOI4_SO18022351-10-01_DS_SPOT6_201809010523002_FR1_FR1_SV1_SV1_E075N13_02602
+
 # define the exit codes
 SUCCESS=0
 SNAP_REQUEST_ERROR=1
@@ -875,8 +881,6 @@ local tifList=${TMPDIR}/tifList.txt
 local filesListCSV=""
 targetBandsNamesListTXT=${TMPDIR}/targetBandsNamesList.txt
 local index=0
-
-imgExt=".tif"
 if [[ -d "${prodname}" ]]; then
   jp2_product=""
   # Get multispectral image file
@@ -905,25 +909,28 @@ if [[ -d "${prodname}" ]]; then
     otbcli_OpticalCalibration -in ${currentProd} -out ${outputfile} -ram ${RAM_AVAILABLE}
     returnCode=$?
     [ $returnCode -eq 0 ] || return ${ERR_OTB}
-    imgFile=${outputfile}
   done
+  ciop-log "INFO" "Current location is: $( pwd ) "
+  imgFiles=$(find $( pwd )/ -name 'IMG_*MS*_R?C?.tif')
+  ciop-log "INFO" "Tif images are: ${imgFiles} "
+  outputCal=${outputfile}
   #If tiles exist merge all tiles
   tilesNum=$( get_num_tiles ${prodname} )
   if [ ${tilesNum} -gt 1 ]; then
       ciop-log "INFO" "The image is divided into ${tilesNum} tiles"
-      imgFile1=(${imgFile})
-      untiledImgFile="${imgFile1##*/}"; untiledImgFile="${untiledImgFile%_R?C?.JP2}.tif"
-      untiledVrtFile="${untiledImgFile%.tif}.vrt"
+      imgFile1=(${imgFiles})
+      untiledVrtFile="${imgFile1%_R?C?.tif}.vrt"
       ciop-log "INFO" "Performing image fusion to ${untiledVrtFile}"
-      gdalbuildvrt ${untiledVrtFile} ${imgFile}
-      imgFile=${untiledVrtFile}
-      imgExt=".vrt"
+      gdalbuildvrt ${untiledVrtFile} ${imgFiles}
+      outimgFile="${untiledVrtFile%.vrt}.tif"
+      gdal_translate ${untiledVrtFile} ${outimgFile} -of GTiff
+      outputCal=${outimgFile}
   fi
 fi
 
 # set output calibrated filename
-outputCal=${outputfile}
 outputCalDIM="${outputCal%.tif}.dim"
+ciop-log "INFO" "The dim file is ${outputCalDIM}"
 # convert tif to beam dimap format
 ciop-log "INFO" "Invoking SNAP-pconvert on the generated request file for tif to dim conversion"
 pconvert -f dim ${outputCal}
