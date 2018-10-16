@@ -48,6 +48,7 @@
                   <!-- Set here the dependencies installed with 'sudo yum install'-->
                   <requires>
                     <require>snap = 5.0-1.el6</require>
+                    <require>OTB</require>
                   </requires>
                 </configuration>
               </execution>
