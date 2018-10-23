@@ -45,10 +45,16 @@
                   <goal>rpm</goal>
                 </goals>
                 <configuration>
+                  <postinstallScriptlet>
+						<scriptFile>${basedir}/src/main/scripts/post_install.sh</scriptFile>
+						<fileEncoding>utf-8</fileEncoding>
+                  </postinstallScriptlet>
                   <!-- Set here the dependencies installed with 'sudo yum install'-->
                   <requires>
                     <require>snap = 5.0-1.el6</require>
                     <require>OTB</require>
+                    <require>click</require>
+                    <require>rasterio</require>
                   </requires>
                 </configuration>
               </execution>

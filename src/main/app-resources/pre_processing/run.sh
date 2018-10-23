@@ -15,8 +15,6 @@ source $_CIOP_APPLICATION_PATH/gpt/snap_include.sh
 export PATH=/opt/anaconda/bin:${PATH}
 
 
-#chmod -R 0755 /data/CHARTER_ID668_AOI4_SO18022351-10-01_DS_SPOT6_201809010523002_FR1_FR1_SV1_SV1_E075N13_02602
-
 # define the exit codes
 SUCCESS=0
 SNAP_REQUEST_ERROR=1
@@ -109,7 +107,7 @@ function check_product_type() {
   fi
 
   if [ ${mission} = "Kompsat-2" ]; then
-      prodTypeName=$(ls ${retrievedProduct}/*.tif | head -1 | sed -n -e 's|^.*_\(.*\).tif$|\1|p')
+      prodTypeName=$(ls ${retrievedProduct}/*/*.tif | head -1 | sed -n -e 's|^.*_\(.*\).tif$|\1|p')
       [[ -z "$prodTypeName" ]] && return ${ERR_GETPRODTYPE}
       [[ "$prodTypeName" != "1G" ]] && return $ERR_WRONGPRODTYPE
   fi
@@ -137,7 +135,6 @@ function check_product_type() {
           #prodTypeName=$(sed -n -e 's|^.*DATA_TYPE.*\"\(.*\)\".*$|\1|p' ${filename%%.*}_MTL.txt)
           #rm -f ${filename%%.*}_MTL.txt
       else
-          ciop-log "INFO" "We are here ${retrievedProduct}"
           metadatafile=$(ls ${retrievedProduct}/*_MTL.txt)
           [[ -e "${metadatafile}" ]] || return ${ERR_GETPRODTYPE}
           prodTypeName=$(sed -n -e 's|^.*DATA_TYPE.*\"\(.*\)\".*$|\1|p' ${metadatafile})
@@ -436,6 +433,28 @@ echo $ml_factor
 
 }
 
+# function to calibrate optical image files
+function calibrate_optical_TOA() {
+# function call multispectral image file full path
+
+local currentProd=$( basename $1 )
+local imgsLocation=$( dirname $1 )
+local inputExt=$2
+local outputExt=$3
+local outputfile="${currentProd##*/}"; outputfile="${outputfile%$inputExt}$outputExt"
+
+#move into current product folder
+#cd ${imgsLocation}
+#run OTB optical calibration
+ciop-log "INFO" "Performing image calibration to ${outputfile}"
+otb_op=$( otbcli_OpticalCalibration -in ${currentProd} -out ${outputfile} -ram ${RAM_AVAILABLE})
+#otbcli_OpticalCalibration -in ${currentProd} -out ${outputfile} -ram ${RAM_AVAILABLE}
+#returnCode=$?
+#[ $returnCode -eq 0 ] || return ${ERR_OTB}
+#cd -
+
+echo ${outputfile}
+}
 
 # function that compares the pixel spacing and returns the greter one
 function get_greater_pixel_spacing() {
@@ -897,22 +916,13 @@ if [[ -d "${prodname}" ]]; then
   [ $numProd -eq 0  ] && return ${ERR_CONVERT}
   local prodId=0
   let "numProd-=1"
+  cd $( dirname ${jp2_product})
   for prodId in `seq 0 $numProd`; do
     currentProd=${jp2_product_arr[$prodId]}
-    imgsLocation=$( dirname ${jp2_product} )
-    #move into current product folder
-    cd ${imgsLocation}
-    #set output filename
-    outputfile="${currentProd##*/}"; outputfile="${outputfile%.JP2}.tif"
-    #run OTB optical calibration
-    ciop-log "INFO" "Performing image calibration to ${outputfile}"
-    otbcli_OpticalCalibration -in ${currentProd} -out ${outputfile} -ram ${RAM_AVAILABLE}
-    returnCode=$?
-    [ $returnCode -eq 0 ] || return ${ERR_OTB}
+    outputfile=$( calibrate_optical_TOA ${currentProd} .JP2 .tif)
+    ciop-log "DEBUG" "Output file is ${outputfile}"
   done
-  ciop-log "INFO" "Current location is: $( pwd ) "
   imgFiles=$(find $( pwd )/ -name 'IMG_*MS*_R?C?.tif')
-  ciop-log "INFO" "Tif images are: ${imgFiles} "
   outputCal=${outputfile}
   #If tiles exist merge all tiles
   tilesNum=$( get_num_tiles ${prodname} )
@@ -1054,6 +1064,7 @@ local index=0
 # mission dependent TIF list
 # if Landsat-8 it can be compressed in tar.bz
 if [ ${mission} = "Landsat-8" ]; then
+    ext=".TIF"
     #Check if downloaded product is compressed and extract it
     ext="${prodname##*/}"; ext="${ext#*.}"
     ciop-log "INFO" "Product extension is: $ext"
@@ -1066,18 +1077,44 @@ if [ ${mission} = "Landsat-8" ]; then
         filename="${prodname##*/}"
         tar xf $filename -C ${currentBasename}
         returnCode=$?
+        ext=".TIF"
         [ $returnCode -eq 0 ] || return ${ERR_UNPACKING}
         prodname=${prodname%/*}/${currentBasename}
-        ls "${prodname}"/LC*_B[1-7].TIF > $tifList
-        ls "${prodname}"/LC*_B9.TIF >> $tifList
-        ls "${prodname}"/LC*_B1[0,1].TIF >> $tifList
+        ls "${prodname}"/LC*_B[1-7]${ext} > $tifList
+        ls "${prodname}"/LC*_B9${ext} >> $tifList
+        ls "${prodname}"/LC*_B1[0,1]${ext} >> $tifList
     else
-        ls "${prodname}"/LS08*_B[0-1][0-7,9].TIF > $tifList
+        ls "${prodname}"/LS08*_B[0-1][0-7,9]${ext} > $tifList
     fi
+    for tif in $(cat "${tifList}"); do
+        if [[ $tif != *LC*_B1[0,1]* ]]; then
+            ciop-log "INFO" "Performing radiometric calibration for $tif"
+            cd $( dirname ${tif})
+            metadatafile=$(ls ${prodname}/*_MTL.txt)
+            outputfile="${tif%.TIF}_toa.tif"
+            rio toa reflectance ${tif} ${metadatafile} ${outputfile}
+            rm $tif
+            mv $outputfile $tif
+        fi
+        cd -
+        basenameNoExt=$(basename "$tif")
+        basenameNoExt="${basenameNoExt%.*}"
+        if [ $index -eq 0  ] ; then
+            filesListCSV=$tif
+            echo ${basenameNoExt} > ${targetBandsNamesListTXT}
+        else
+            filesListCSV=$filesListCSV,$tif
+            echo ${basenameNoExt} >> ${targetBandsNamesListTXT}
+        fi
+        let "index=index+1"
+    done
 elif [ ${mission} = "Kompsat-2" ]; then
-    ls "${prodname}"/MSC_*[R,G,B,N]_1G.tif > $tifList
+    ext=".tif"
+#    cp -r ${prodname} /data/
+#    chmod -R 0755 /data/${prodname}
+    ls "${prodname}"/*/MSC_*[R,G,B,N]_1G${ext} > $tifList
 elif [ ${mission} = "Kompsat-3" ]; then
-    ls "${prodname}"/K3_*_L1G_[R,G,B,N]*.tif > $tifList
+    ls "${prodname}"/K3_*_L1G_[R,G,B,N]*${ext} > $tifList
 else
     return ${ERR_PREPROCESS}
 fi
