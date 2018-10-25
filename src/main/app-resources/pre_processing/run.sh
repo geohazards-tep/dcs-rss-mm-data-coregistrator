@@ -441,18 +441,19 @@ local currentProd=$( basename $1 )
 local imgsLocation=$( dirname $1 )
 local inputExt=$2
 local outputExt=$3
+local gainbiasfile=$4
+local solarilluminationsfile=$5
 local outputfile="${currentProd##*/}"; outputfile="${outputfile%$inputExt}$outputExt"
 
-#move into current product folder
-#cd ${imgsLocation}
 #run OTB optical calibration
 ciop-log "INFO" "Performing image calibration to ${outputfile}"
-otb_op=$( otbcli_OpticalCalibration -in ${currentProd} -out ${outputfile} -ram ${RAM_AVAILABLE})
-#otbcli_OpticalCalibration -in ${currentProd} -out ${outputfile} -ram ${RAM_AVAILABLE}
+if [[ ! -z "$gainbiasfile" ]] && [[ ! -z "$solarilluminationsfile" ]]  ; then
+    otb_op=$( otbcli_OpticalCalibration -in ${currentProd} -out ${outputfile} -acqui.gainbias ${gainbiasfile} -acqui.solarilluminations ${solarilluminationsfile} -level toa -ram ${RAM_AVAILABLE})
+else
+    otb_op=$( otbcli_OpticalCalibration -in ${currentProd} -out ${outputfile} -level toa -ram ${RAM_AVAILABLE})
+fi
 #returnCode=$?
 #[ $returnCode -eq 0 ] || return ${ERR_OTB}
-#cd -
-
 echo ${outputfile}
 }
 
@@ -850,10 +851,36 @@ fi
 outProdBasename=$(basename ${prodname})_pre_proc
 outProd=${TMPDIR}/${outProdBasename}
 
-# report activity in the log
-ciop-log "INFO" "Preparing SNAP request file for UK-DMC 2 data pre processing"
 # source bands list for UKDMC-2
 sourceBandsList="NIR,Red,Green"
+
+#Optical Calibration
+#get gain and bias values for all bands in dim file
+cd ${prodname}
+gainbiasFile=${TMPDIR}/gainbias.txt
+illuminationsFile=${TMPDIR}/illuminations.txt
+imgfile=$(find ${prodname}/ -name 'U*.tif')
+prodDimFile=$(find ${prodname}/ -name 'U*.dim')
+gainchain=''
+biaschain=''
+IFS=","
+for b in $sourceBandsList ; do
+    gain=$( cat ${prodDimFile} | sed -n '/'${b}'/{N; s/.*<PHYSICAL_GAIN>\(.*\)<\/PHYSICAL_GAIN>.*/\1/p; }')
+    gainchain=$gainchain':'$gain
+    bias=$( cat ${prodDimFile} | sed -n '/'${b}'/{N; N; s/.*<PHYSICAL_BIAS>\(.*\)<\/PHYSICAL_BIAS>.*/\1/p; }')
+    biaschain=$biaschain':'$bias
+done
+echo ${gainchain#?} > $gainbiasFile
+echo ${biaschain#?} >> $gainbiasFile
+echo '1036:1561:1811' >> $illuminationsFile
+#perform the callibration
+outputfile=$( calibrate_optical_TOA ${imgfile} .tif _toa.tif ${gainbiasFile} ${illuminationsFile})
+rm ${imgfile}
+mv ${outputfile} ${imgfile}
+cd -
+
+# report activity in the log
+ciop-log "INFO" "Preparing SNAP request file for UK-DMC 2 data pre processing"
 # prepare the SNAP request
 SNAP_REQUEST=$( create_snap_request_rsmpl_rprj_sbs "${prodname}" "${performResample}" "${target_spacing}" "${performCropping}" "${subsettingBoxWKT}" "${sourceBandsList}" "${outProd}")
 [ $? -eq 0 ] || return ${SNAP_REQUEST_ERROR}
@@ -1097,21 +1124,9 @@ if [ ${mission} = "Landsat-8" ]; then
             mv $outputfile $tif
         fi
         cd -
-        basenameNoExt=$(basename "$tif")
-        basenameNoExt="${basenameNoExt%.*}"
-        if [ $index -eq 0  ] ; then
-            filesListCSV=$tif
-            echo ${basenameNoExt} > ${targetBandsNamesListTXT}
-        else
-            filesListCSV=$filesListCSV,$tif
-            echo ${basenameNoExt} >> ${targetBandsNamesListTXT}
-        fi
-        let "index=index+1"
     done
 elif [ ${mission} = "Kompsat-2" ]; then
     ext=".tif"
-#    cp -r ${prodname} /data/
-#    chmod -R 0755 /data/${prodname}
     ls "${prodname}"/*/MSC_*[R,G,B,N]_1G${ext} > $tifList
 elif [ ${mission} = "Kompsat-3" ]; then
     ls "${prodname}"/K3_*_L1G_[R,G,B,N]*${ext} > $tifList
