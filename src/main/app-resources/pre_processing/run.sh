@@ -113,7 +113,7 @@ function check_product_type() {
   fi
 
   if [ ${mission} = "Kompsat-3"  ]; then
-      prodTypeName=$(ls ${retrievedProduct}/*.tif | head -1 | sed -n -e 's|^.*_\(.*\)_[A-Z].tif$|\1|p')
+      prodTypeName=$(ls ${retrievedProduct}/*/*.tif | head -1 | sed -n -e 's|^.*_\(.*\)_[A-Z].tif$|\1|p')
       [[ -z "$prodTypeName" ]] && return ${ERR_GETPRODTYPE}
       [[ "$prodTypeName" != "L1G" ]] && return $ERR_WRONGPRODTYPE
   fi
@@ -876,6 +876,8 @@ echo '1036:1561:1811' >> $illuminationsFile
 #perform the callibration
 outputfile=$( calibrate_optical_TOA ${imgfile} .tif _toa.tif ${gainbiasFile} ${illuminationsFile})
 rm ${imgfile}
+rm $gainbiasFile
+rm $illuminationsFile
 mv ${outputfile} ${imgfile}
 cd -
 
@@ -1128,8 +1130,53 @@ if [ ${mission} = "Landsat-8" ]; then
 elif [ ${mission} = "Kompsat-2" ]; then
     ext=".tif"
     ls "${prodname}"/*/MSC_*[R,G,B,N]_1G${ext} > $tifList
+    #Optical Calibration
+    #get gain and bias values for all bands in dim file
+    cd ${prodname}/MSC*
+    k2gains='8.01976069034:8.5047754314:7.40729766966:6.34666768213'
+    k2bias='0.0 : 0.0 : 0.0 : 0.0'
+    k2illuminations='1838:1915:1075:1534'
+    #perform the callibration for each band
+    n=0
+    for tif in $(cat "${tifList}"); do
+        gainbiasFile=${TMPDIR}/gainbias.txt
+        illuminationsFile=${TMPDIR}/illuminations.txt
+        n=$(($n+1))
+        echo $k2gains | cut -d':' -f$n > $gainbiasFile
+        echo $k2bias | cut -d':' -f$n >> $gainbiasFile
+        echo $k2illuminations | cut -d':' -f$n > $illuminationsFile
+        outputfile=$( calibrate_optical_TOA ${tif} .tif _toa.tif ${gainbiasFile} ${illuminationsFile})
+        rm $gainbiasFile
+        rm $illuminationsFile
+        rm ${tif}
+        mv ${outputfile} ${tif}
+    done
+    cd -
 elif [ ${mission} = "Kompsat-3" ]; then
-    ls "${prodname}"/K3_*_L1G_[R,G,B,N]*${ext} > $tifList
+    ext=".tif"
+    ls "${prodname}"/*/K3_*_L1G_[R,G,B,N]*${ext} > $tifList
+    #Optical Calibration
+    #get gain and bias values for all bands in dim file
+    cd ${prodname}/K3*
+    k3gains='55.2181115406:39.3545848091:76.9230769231:49.4315373208'
+    k3bias='0.0 : 0.0 : 0.0 : 0.0'
+    k3illuminations='2001:1875:1027:1525'
+    #perform the callibration for each band
+    n=0
+    for tif in $(cat "${tifList}"); do
+        gainbiasFile=${TMPDIR}/gainbias.txt
+        illuminationsFile=${TMPDIR}/illuminations.txt
+        n=$(($n+1))
+        echo $k3gains | cut -d':' -f$n > $gainbiasFile
+        echo $k3bias | cut -d':' -f$n >> $gainbiasFile
+        echo $k3illuminations | cut -d':' -f$n > $illuminationsFile
+        outputfile=$( calibrate_optical_TOA ${tif} .tif _toa.tif ${gainbiasFile} ${illuminationsFile})
+        rm $gainbiasFile
+        rm $illuminationsFile
+        rm ${tif}
+        mv ${outputfile} ${tif}
+    done
+    cd -
 else
     return ${ERR_PREPROCESS}
 fi
