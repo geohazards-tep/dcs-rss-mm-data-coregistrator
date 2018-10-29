@@ -5,6 +5,13 @@
       <streamingExecutable>/application/pre_processing/run.sh</streamingExecutable>
       <defaultParameters>
          <parameter id="slave" title="Slave product reference" abstract="Define the product(s) that will be co-registered together with master product" scope="runtime"></parameter>
+         <parameter id="performOpticalCalibration" title="Perform optical calibration" abstract="Choose if optical calibration is performed on the selected data sets." scope="runtime" maxOccurs="1">
+         	<options>
+                	<option>true</option>
+                        <option>false</option>
+                        <default>false</default>
+                </options>
+         </parameter>
          <parameter id="performCropping" title="Perform data cropping" abstract="Choose if the selected data set have to be cropped according to the user defined AOI" scope="runtime" maxOccurs="1">
          	<options>
                 	<option>true</option>

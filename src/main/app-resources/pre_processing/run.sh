@@ -13,7 +13,7 @@ source $_CIOP_APPLICATION_PATH/gpt/snap_include.sh
 
 ## put /opt/anaconda/bin ahead to the PATH list to ensure gdal to point to the anaconda installation dir
 export PATH=/opt/anaconda/bin:${PATH}
-
+#export PATH=/home/rssuser/.conda/envs/csw/bin/:${PATH}
 
 # define the exit codes
 SUCCESS=0
@@ -319,7 +319,7 @@ function pre_processing() {
 
 # function call pre_processing "${prodname}" "${mission}" "${pixelSpacing}" "${pixelSpacingMaster}" "${performCropping}" "${subsettingBoxWKT}"
 inputNum=$#
-[ "$inputNum" -ne 6 ] && return ${ERR_CALLPREPROCESS}
+[ "$inputNum" -ne 7 ] && return ${ERR_CALLPREPROCESS}
 
 local prodname=$1
 local mission=$2
@@ -327,6 +327,7 @@ local pixelSpacing=$3
 local pixelSpacingMaster=$4
 local performCropping=$5
 local subsettingBoxWKT=$6
+local performOpticalCalibration=$7
 
 case "$mission" in
         "Sentinel-1")
@@ -340,37 +341,37 @@ case "$mission" in
 	    ;;
 
         "UK-DMC2")
-	    pre_processing_ukdmc2 "${prodname}" "${pixelSpacing}" "${pixelSpacingMaster}" "${performCropping}" "${subsettingBoxWKT}"
+	    pre_processing_ukdmc2 "${prodname}" "${pixelSpacing}" "${pixelSpacingMaster}" "${performCropping}" "${subsettingBoxWKT}" "${performOpticalCalibration}"
             return $?
             ;;
 
 	    "Kompsat-2")
-            pre_processing_generic_optical "${prodname}" "${mission}" "${pixelSpacing}" "${pixelSpacingMaster}" "${performCropping}" "${subsettingBoxWKT}"
+            pre_processing_generic_optical "${prodname}" "${mission}" "${pixelSpacing}" "${pixelSpacingMaster}" "${performCropping}" "${subsettingBoxWKT}" "${performOpticalCalibration}"
             return $?
             ;;
 
         "Kompsat-3")
-            pre_processing_generic_optical "${prodname}" "${mission}" "${pixelSpacing}" "${pixelSpacingMaster}" "${performCropping}" "${subsettingBoxWKT}"
+            pre_processing_generic_optical "${prodname}" "${mission}" "${pixelSpacing}" "${pixelSpacingMaster}" "${performCropping}" "${subsettingBoxWKT}" "${performOpticalCalibration}"
             return $?
             ;;
 
 	    "Landsat-8")
-	         pre_processing_generic_optical "${prodname}" "${mission}" "${pixelSpacing}" "${pixelSpacingMaster}" "${performCropping}" "${subsettingBoxWKT}"
+	         pre_processing_generic_optical "${prodname}" "${mission}" "${pixelSpacing}" "${pixelSpacingMaster}" "${performCropping}" "${subsettingBoxWKT}" "${performOpticalCalibration}"
             return $?
             ;;
 
         "SPOT-6")
-            pre_processing_spot_pleiades "${prodname}" "${mission}" "${pixelSpacing}" "${pixelSpacingMaster}" "${performCropping}" "${subsettingBoxWKT}"
+            pre_processing_spot_pleiades "${prodname}" "${mission}" "${pixelSpacing}" "${pixelSpacingMaster}" "${performCropping}" "${subsettingBoxWKT}" "${performOpticalCalibration}"
                 return $?
                 ;;
 
         "SPOT-7")
-            pre_processing_spot_pleiades "${prodname}" "${mission}" "${pixelSpacing}" "${pixelSpacingMaster}" "${performCropping}" "${subsettingBoxWKT}"
+            pre_processing_spot_pleiades "${prodname}" "${mission}" "${pixelSpacing}" "${pixelSpacingMaster}" "${performCropping}" "${subsettingBoxWKT}" "${performOpticalCalibration}"
                 return $?
                 ;;
 
         "PLEIADES")
-            pre_processing_spot_pleiades "${prodname}" "${mission}" "${pixelSpacing}" "${pixelSpacingMaster}" "${performCropping}" "${subsettingBoxWKT}"
+            pre_processing_spot_pleiades "${prodname}" "${mission}" "${pixelSpacing}" "${pixelSpacingMaster}" "${performCropping}" "${subsettingBoxWKT}" "${performOpticalCalibration}"
                 return $?
                 ;;
 
@@ -831,13 +832,14 @@ function pre_processing_ukdmc2() {
 # function call pre_processing_ukdmc2 "${prodname}" "${pixelSpacing}" "${pixelSpacingMaster}" "${performCropping}" "${subsettingBoxWKT}"
 
 inputNum=$#
-[ "$inputNum" -ne 5 ] && return ${ERR_PREPROCESS}
+[ "$inputNum" -ne 6 ] && return ${ERR_PREPROCESS}
 
 local prodname=$1
 local pixelSpacing=$2
 local pixelSpacingMaster=$3
 local performCropping=$4
 local subsettingBoxWKT=$5
+local performOpticalCalibration=$6
 
 # use the greter pixel spacing as target spacing (in order to downsample if needed, upsampling always avoided)
 local target_spacing=$( get_greater_pixel_spacing ${pixelSpacing} ${pixelSpacingMaster} )
@@ -855,31 +857,33 @@ outProd=${TMPDIR}/${outProdBasename}
 sourceBandsList="NIR,Red,Green"
 
 #Optical Calibration
-#get gain and bias values for all bands in dim file
-cd ${prodname}
-gainbiasFile=${TMPDIR}/gainbias.txt
-illuminationsFile=${TMPDIR}/illuminations.txt
-imgfile=$(find ${prodname}/ -name 'U*.tif')
-prodDimFile=$(find ${prodname}/ -name 'U*.dim')
-gainchain=''
-biaschain=''
-IFS=","
-for b in $sourceBandsList ; do
-    gain=$( cat ${prodDimFile} | sed -n '/'${b}'/{N; s/.*<PHYSICAL_GAIN>\(.*\)<\/PHYSICAL_GAIN>.*/\1/p; }')
-    gainchain=$gainchain':'$gain
-    bias=$( cat ${prodDimFile} | sed -n '/'${b}'/{N; N; s/.*<PHYSICAL_BIAS>\(.*\)<\/PHYSICAL_BIAS>.*/\1/p; }')
-    biaschain=$biaschain':'$bias
-done
-echo ${gainchain#?} > $gainbiasFile
-echo ${biaschain#?} >> $gainbiasFile
-echo '1036:1561:1811' >> $illuminationsFile
-#perform the callibration
-outputfile=$( calibrate_optical_TOA ${imgfile} .tif _toa.tif ${gainbiasFile} ${illuminationsFile})
-rm ${imgfile}
-rm $gainbiasFile
-rm $illuminationsFile
-mv ${outputfile} ${imgfile}
-cd -
+if [[ "${performOpticalCalibration}" = true ]]; then
+    #get gain and bias values for all bands in dim file
+    cd ${prodname}
+    gainbiasFile=${TMPDIR}/gainbias.txt
+    illuminationsFile=${TMPDIR}/illuminations.txt
+    imgfile=$(find ${prodname}/ -name 'U*.tif')
+    prodDimFile=$(find ${prodname}/ -name 'U*.dim')
+    gainchain=''
+    biaschain=''
+    IFS=","
+    for b in $sourceBandsList ; do
+        gain=$( cat ${prodDimFile} | sed -n '/'${b}'/{N; s/.*<PHYSICAL_GAIN>\(.*\)<\/PHYSICAL_GAIN>.*/\1/p; }')
+        gainchain=$gainchain':'$gain
+        bias=$( cat ${prodDimFile} | sed -n '/'${b}'/{N; N; s/.*<PHYSICAL_BIAS>\(.*\)<\/PHYSICAL_BIAS>.*/\1/p; }')
+        biaschain=$biaschain':'$bias
+    done
+    echo ${gainchain#?} > $gainbiasFile
+    echo ${biaschain#?} >> $gainbiasFile
+    echo '1036:1561:1811' >> $illuminationsFile
+    #perform the callibration
+    outputfile=$( calibrate_optical_TOA ${imgfile} .tif _toa.tif ${gainbiasFile} ${illuminationsFile})
+    rm ${imgfile}
+    rm $gainbiasFile
+    rm $illuminationsFile
+    mv ${outputfile} ${imgfile}
+    cd -
+fi
 
 # report activity in the log
 ciop-log "INFO" "Preparing SNAP request file for UK-DMC 2 data pre processing"
@@ -914,7 +918,7 @@ function pre_processing_spot_pleiades() {
 # function call pre_processing_generic_optical "${prodname}" "${mission}" "${pixelSpacing}" "${pixelSpacingMaster}" "${performCropping}" "${subsettingBoxWKT}"
 
 inputNum=$#
-[ "$inputNum" -ne 6 ] && return ${ERR_PREPROCESS}
+[ "$inputNum" -ne 7 ] && return ${ERR_PREPROCESS}
 
 local prodname=$1
 local mission=$2
@@ -922,6 +926,7 @@ local pixelSpacing=$3
 local pixelSpacingMaster=$4
 local performCropping=$5
 local subsettingBoxWKT=$6
+local performOpticalCalibration=$7
 prodBasename=$(basename ${prodname})
 
 # loop to fill contained TIFs and their basenames
@@ -948,7 +953,12 @@ if [[ -d "${prodname}" ]]; then
   cd $( dirname ${jp2_product})
   for prodId in `seq 0 $numProd`; do
     currentProd=${jp2_product_arr[$prodId]}
-    outputfile=$( calibrate_optical_TOA ${currentProd} .JP2 .tif)
+    if [[ "${performOpticalCalibration}" = true ]]; then
+        outputfile=$( calibrate_optical_TOA ${currentProd} .JP2 .tif)
+    else
+        outputfile="${currentProd%.JP2}.tif"
+        gdal_translate ${currentProd} ${outputfile} -of GTiff
+    fi
     ciop-log "DEBUG" "Output file is ${outputfile}"
   done
   imgFiles=$(find $( pwd )/ -name 'IMG_*MS*_R?C?.tif')
@@ -967,13 +977,14 @@ if [[ -d "${prodname}" ]]; then
   fi
 fi
 
+
 # set output calibrated filename
 outputCalDIM="${outputCal%.tif}.dim"
-ciop-log "INFO" "The dim file is ${outputCalDIM}"
+ciop-log "DEBUG" "The dim file is ${outputCalDIM}"
 # convert tif to beam dimap format
 ciop-log "INFO" "Invoking SNAP-pconvert on the generated request file for tif to dim conversion"
 pconvert -f dim ${outputCal}
-# remove intermediate calibrated file
+# remove intermediate file
 rm ${outputCal}
 currentBandsList=$( xmlstarlet sel -t -v "/Dimap_Document/Image_Interpretation/Spectral_Band_Info/BAND_NAME" ${outputCalDIM} )
 currentBandsList=(${currentBandsList})
@@ -1074,7 +1085,7 @@ function pre_processing_generic_optical() {
 # function call pre_processing_generic_optical "${prodname}" "${mission}" "${pixelSpacing}" "${pixelSpacingMaster}" "${performCropping}" "${subsettingBoxWKT}"
 
 inputNum=$#
-[ "$inputNum" -ne 6 ] && return ${ERR_PREPROCESS}
+[ "$inputNum" -ne 7 ] && return ${ERR_PREPROCESS}
 
 local prodname=$1
 local mission=$2
@@ -1082,6 +1093,7 @@ local pixelSpacing=$3
 local pixelSpacingMaster=$4
 local performCropping=$5
 local subsettingBoxWKT=$6
+local performOpticalCalibration=$7
 prodBasename=$(basename ${prodname})
 
 # loop to fill contained TIFs and their basenames
@@ -1115,68 +1127,74 @@ if [ ${mission} = "Landsat-8" ]; then
     else
         ls "${prodname}"/LS08*_B[0-1][0-7,9]${ext} > $tifList
     fi
-    for tif in $(cat "${tifList}"); do
-        if [[ $tif != *LC*_B1[0,1]* ]]; then
-            ciop-log "INFO" "Performing radiometric calibration for $tif"
-            cd $( dirname ${tif})
-            metadatafile=$(ls ${prodname}/*_MTL.txt)
-            outputfile="${tif%.TIF}_toa.tif"
-            rio toa reflectance ${tif} ${metadatafile} ${outputfile}
-            rm $tif
-            mv $outputfile $tif
-        fi
-        cd -
-    done
+    if [[ "${performOpticalCalibration}" = true ]]; then
+        for tif in $(cat "${tifList}"); do
+            if [[ $tif != *LC*_B1[0,1]* ]]; then
+                ciop-log "INFO" "Performing radiometric calibration for $tif"
+                cd $( dirname ${tif})
+                metadatafile=$(ls ${prodname}/*_MTL.txt)
+                outputfile="${tif%.TIF}_toa.tif"
+                rio toa reflectance ${tif} ${metadatafile} ${outputfile}
+                rm $tif
+                mv $outputfile $tif
+            fi
+            cd -
+        done
+    fi
 elif [ ${mission} = "Kompsat-2" ]; then
     ext=".tif"
     ls "${prodname}"/*/MSC_*[R,G,B,N]_1G${ext} > $tifList
     #Optical Calibration
-    #get gain and bias values for all bands in dim file
-    cd ${prodname}/MSC*
-    k2gains='8.01976069034:8.5047754314:7.40729766966:6.34666768213'
-    k2bias='0.0 : 0.0 : 0.0 : 0.0'
-    k2illuminations='1838:1915:1075:1534'
-    #perform the callibration for each band
-    n=0
-    for tif in $(cat "${tifList}"); do
-        gainbiasFile=${TMPDIR}/gainbias.txt
-        illuminationsFile=${TMPDIR}/illuminations.txt
-        n=$(($n+1))
-        echo $k2gains | cut -d':' -f$n > $gainbiasFile
-        echo $k2bias | cut -d':' -f$n >> $gainbiasFile
-        echo $k2illuminations | cut -d':' -f$n > $illuminationsFile
-        outputfile=$( calibrate_optical_TOA ${tif} .tif _toa.tif ${gainbiasFile} ${illuminationsFile})
-        rm $gainbiasFile
-        rm $illuminationsFile
-        rm ${tif}
-        mv ${outputfile} ${tif}
-    done
-    cd -
+    if [[ "${performOpticalCalibration}" = true ]]; then
+        #get gain and bias values for all bands in dim file
+        cd ${prodname}/MSC*
+        k2gains='8.01976069034:8.5047754314:7.40729766966:6.34666768213'
+        k2bias='0.0 : 0.0 : 0.0 : 0.0'
+        k2illuminations='1838:1915:1075:1534'
+        #perform the callibration for each band
+        n=0
+        for tif in $(cat "${tifList}"); do
+            gainbiasFile=${TMPDIR}/gainbias.txt
+            illuminationsFile=${TMPDIR}/illuminations.txt
+            n=$(($n+1))
+            echo $k2gains | cut -d':' -f$n > $gainbiasFile
+            echo $k2bias | cut -d':' -f$n >> $gainbiasFile
+            echo $k2illuminations | cut -d':' -f$n > $illuminationsFile
+            outputfile=$( calibrate_optical_TOA ${tif} .tif _toa.tif ${gainbiasFile} ${illuminationsFile})
+            rm $gainbiasFile
+            rm $illuminationsFile
+            rm ${tif}
+            mv ${outputfile} ${tif}
+        done
+        cd -
+    fi
 elif [ ${mission} = "Kompsat-3" ]; then
     ext=".tif"
     ls "${prodname}"/*/K3_*_L1G_[R,G,B,N]*${ext} > $tifList
     #Optical Calibration
-    #get gain and bias values for all bands in dim file
-    cd ${prodname}/K3*
-    k3gains='55.2181115406:39.3545848091:76.9230769231:49.4315373208'
-    k3bias='0.0 : 0.0 : 0.0 : 0.0'
-    k3illuminations='2001:1875:1027:1525'
-    #perform the callibration for each band
-    n=0
-    for tif in $(cat "${tifList}"); do
-        gainbiasFile=${TMPDIR}/gainbias.txt
-        illuminationsFile=${TMPDIR}/illuminations.txt
-        n=$(($n+1))
-        echo $k3gains | cut -d':' -f$n > $gainbiasFile
-        echo $k3bias | cut -d':' -f$n >> $gainbiasFile
-        echo $k3illuminations | cut -d':' -f$n > $illuminationsFile
-        outputfile=$( calibrate_optical_TOA ${tif} .tif _toa.tif ${gainbiasFile} ${illuminationsFile})
-        rm $gainbiasFile
-        rm $illuminationsFile
-        rm ${tif}
-        mv ${outputfile} ${tif}
-    done
-    cd -
+    if [[ "${performOpticalCalibration}" = true ]]; then
+        #get gain and bias values for all bands in dim file
+        cd ${prodname}/K3*
+        k3gains='55.2181115406:39.3545848091:76.9230769231:49.4315373208'
+        k3bias='0.0 : 0.0 : 0.0 : 0.0'
+        k3illuminations='2001:1875:1027:1525'
+        #perform the callibration for each band
+        n=0
+        for tif in $(cat "${tifList}"); do
+            gainbiasFile=${TMPDIR}/gainbias.txt
+            illuminationsFile=${TMPDIR}/illuminations.txt
+            n=$(($n+1))
+            echo $k3gains | cut -d':' -f$n > $gainbiasFile
+            echo $k3bias | cut -d':' -f$n >> $gainbiasFile
+            echo $k3illuminations | cut -d':' -f$n > $illuminationsFile
+            outputfile=$( calibrate_optical_TOA ${tif} .tif _toa.tif ${gainbiasFile} ${illuminationsFile})
+            rm $gainbiasFile
+            rm $illuminationsFile
+            rm ${tif}
+            mv ${outputfile} ${tif}
+        done
+        cd -
+    fi
 else
     return ${ERR_PREPROCESS}
 fi
@@ -1724,6 +1742,12 @@ function main() {
     [ "$slavesNum" -lt "1" ] && exit $ERR_WRONGINPUTNUM
 
     # retrieve the parameters value from workflow or job default value
+    performOpticalCalibration="`ciop-getparam performOpticalCalibration`"
+    # log the value, it helps debugging.
+    # the log entry is available in the process stderr
+    ciop-log "DEBUG" "The performOpticalCalibration flag is set to ${performOpticalCalibration}"
+
+    # retrieve the parameters value from workflow or job default value
     performCropping="`ciop-getparam performCropping`"
     # log the value, it helps debugging.
     # the log entry is available in the process stderr
@@ -1848,7 +1872,7 @@ function main() {
 
         # report activity in the log
         ciop-log "INFO" "Running pre-processing for ${prodname}"
-        pre_processing "${retrievedProduct}" "${mission}" "${pixelSpacing}" "${pixelSpacingMaster}" "${performCropping}" "${subsettingBoxWKT}"
+        pre_processing "${retrievedProduct}" "${mission}" "${pixelSpacing}" "${pixelSpacingMaster}" "${performCropping}" "${subsettingBoxWKT}" "${performOpticalCalibration}"
         returnCode=$?
         [ $returnCode -eq 0 ] || return $returnCode
         # Publish results
