@@ -118,6 +118,12 @@ function check_product_type() {
       [[ "$prodTypeName" != "L1G" ]] && return $ERR_WRONGPRODTYPE
   fi
 
+  if [ ${mission} = "RapidEye"  ]; then
+      prodTypeName=$(ls ${retrievedProduct}/*.tif | head -1 | sed -n -e 's/.*\([0-9][A-Z]*\)-.*/\1/p')
+      [[ -z "$prodTypeName" ]] && return ${ERR_GETPRODTYPE}
+      [[ "$prodTypeName" != "3A" ]] && return $ERR_WRONGPRODTYPE
+  fi
+
   if [ ${mission} = "Landsat-8" ]; then
       prodTypeName=""
       #Extract metadata file from Landsat
@@ -215,6 +221,8 @@ function mission_prod_retrieval(){
         pleiades_test=$(echo "${prod_basename}" | grep "PHR")
         [[ -z "${pleiades_test}" ]] && pleiades_test=$(ls "${retrievedProduct}" | grep "PHR")
         [ "${pleiades_test}" = "" ] || mission="PLEIADES"
+        [[ -z "${rapideye_test}" ]] && rapideye_test=$(ls "${retrievedProduct}" | grep "RE2")
+        [ "${rapideye_test}" = "" ] || mission="RapidEye"
         if [ "${mission}" != "" ] ; then
             echo ${mission}
         else
@@ -290,6 +298,12 @@ case "$mission" in
         "PLEIADES")
             spot_xml=$(find ${retrievedProduct}/ -name 'DIM_*MS_*.XML' )
             pixSpac=$( cat ${spot_xml} | grep RESAMPLING_SPACING | sed -n -e 's|^.*<RESAMPLING_SPACING .*>\(.*\)</RESAMPLING_SPACING>|\1|p' )
+            echo  $pixSpac | awk '{ print sprintf("%.9f", $1); }'
+            ;;
+
+        "RapidEye")
+            rapideye_xml=$(find ${retrievedProduct}/ -name '*_RE2_*_metadata.xml' )
+            pixSpac=$( cat ${rapideye_xml} | grep resolution | sed -n -e 's|^.*<eop:resolution uom="m">\(.*\)</eop:resolution>.*|\1|p' )
             echo  $pixSpac | awk '{ print sprintf("%.9f", $1); }'
             ;;
 
@@ -375,6 +389,11 @@ case "$mission" in
                 return $?
                 ;;
 
+        "RapidEye")
+            pre_processing_rapideye "${prodname}" "${pixelSpacing}" "${pixelSpacingMaster}" "${performCropping}" "${subsettingBoxWKT}" "${performOpticalCalibration}"
+                return $?
+                ;;
+
         *)
 	    return "${ERR_CALLPREPROCESS}"
 	    ;;
@@ -396,6 +415,10 @@ case "$mission" in
 
         SPOT-[6-7])
             bandListCsv="Blue,Green,Red,NIR"
+	    ;;
+
+        "RapidEye")
+            bandListCsv="Blue,Green,Red,RedEdge,NIR"
 	    ;;
 
         *)
@@ -912,6 +935,171 @@ cd -
 
 }
 
+# RapidEye pre processing function
+function pre_processing_rapideye() {
+# function call pre_processing_ukdmc2 "${prodname}" "${pixelSpacing}" "${pixelSpacingMaster}" "${performCropping}" "${subsettingBoxWKT}"
+
+inputNum=$#
+[ "$inputNum" -ne 6 ] && return ${ERR_PREPROCESS}
+
+local prodname=$1
+local pixelSpacing=$2
+local pixelSpacingMaster=$3
+local performCropping=$4
+local subsettingBoxWKT=$5
+local performOpticalCalibration=$6
+
+# use the greter pixel spacing as target spacing (in order to downsample if needed, upsampling always avoided)
+local target_spacing=$( get_greater_pixel_spacing ${pixelSpacing} ${pixelSpacingMaster} )
+# check for resampling operator: to be used only if the resolution is differenet from the current product one
+local performResample=""
+if (( $(bc <<< "$target_spacing != $pixelSpacing") )) ; then
+    performResample="true"
+else
+    performResample="false"
+fi
+prodBasename=$(basename ${prodname})
+outProdBasename=$(basename ${prodname})_pre_proc
+outProd=${TMPDIR}/${outProdBasename}
+
+# source bands list for Rapideye
+sourceBandsList=$(get_band_list "${prodBasename}" "RapidEye" )
+
+imgfile=$(find ${prodname}/ -name '*_RE2_*.tif' | head -1 )
+
+#Optical Calibration
+if [[ "${performOpticalCalibration}" = true ]]; then
+    #get gain and bias values for all bands in dim file
+    cd ${prodname}
+    gainbiasFile=${TMPDIR}/gainbias.txt
+    illuminationsFile=${TMPDIR}/illuminations.txt
+    imgfile=$(find ${prodname}/ -name 'U*.tif')
+    prodDimFile=$(find ${prodname}/ -name 'U*.dim')
+    gainchain=''
+    biaschain=''
+    IFS=","
+    for b in $sourceBandsList ; do
+        gain=$( cat ${prodDimFile} | sed -n '/'${b}'/{N; s/.*<PHYSICAL_GAIN>\(.*\)<\/PHYSICAL_GAIN>.*/\1/p; }')
+        gainchain=$gainchain':'$gain
+        bias=$( cat ${prodDimFile} | sed -n '/'${b}'/{N; N; s/.*<PHYSICAL_BIAS>\(.*\)<\/PHYSICAL_BIAS>.*/\1/p; }')
+        biaschain=$biaschain':'$bias
+    done
+    echo ${gainchain#?} > $gainbiasFile
+    echo ${biaschain#?} >> $gainbiasFile
+    echo '1036:1561:1811' >> $illuminationsFile
+    #perform the callibration
+    outputfile=$( calibrate_optical_TOA ${imgfile} .tif _toa.tif ${gainbiasFile} ${illuminationsFile})
+    rm ${imgfile}
+    rm $gainbiasFile
+    rm $illuminationsFile
+    mv ${outputfile} ${imgfile}
+    cd -
+fi
+
+# set output calibrated filename
+outputCal=${imgfile}
+outputCalDIM="${outputCal%.tif}.dim"
+cd $prodBasename
+ciop-log "DEBUG" "The dim file is ${outputCalDIM}"
+# convert tif to beam dimap format
+ciop-log "INFO" "Invoking SNAP-pconvert on the generated request file for tif to dim conversion"
+pconvert -f dim ${outputCal}
+# remove intermediate file
+rm ${outputCal}
+currentBandsList=$( xmlstarlet sel -t -v "/Dimap_Document/Image_Interpretation/Spectral_Band_Info/BAND_NAME" ${outputCalDIM} )
+currentBandsList=(${currentBandsList})
+currentBandsList_num=${#currentBandsList[@]}
+currentBandsListTXT=${TMPDIR}/currentBandsList.txt
+# loop on band names to fill band list
+let "currentBandsList_num-=1"
+for index in `seq 0 $currentBandsList_num`;
+do
+    if [ $index -eq 0  ] ; then
+        echo ${currentBandsList[${index}]} > ${currentBandsListTXT}
+    else
+        echo  ${currentBandsList[${index}]} >> ${currentBandsListTXT}
+    fi
+done
+# loop over known product bands to fill target bands list
+targetBandsNamesListTXT=${TMPDIR}/targetBandsNamesList.txt
+# source bands list for Pleiades
+sourceBandsList=$(get_band_list "${prodBasename}" "${mission}" )
+# convert band from comma separted values to space separated values
+bandListSsv=$( echo "${sourceBandsList}" | sed 's|,| |g' )
+# convert ssv to array
+declare -a bandListArray=(${bandListSsv})
+# get number of bands
+numBands=${#bandListArray[@]}
+local bid=0
+let "numBands-=1"
+for bid in `seq 0 $numBands`; do
+    if [ $bid -eq 0  ] ; then
+        echo ${bandListArray[$bid]} > ${targetBandsNamesListTXT}
+    else
+        echo ${bandListArray[$bid]} >> ${targetBandsNamesListTXT}
+    fi
+done
+
+# build request file for rename all the bands contained into the stack product
+# report activity in the log
+outProdRename=${TMPDIR}/stack_renamed_bands
+ciop-log "INFO" "Preparing SNAP request file for bands renaming"
+# prepare the SNAP request
+SNAP_REQUEST=$( create_snap_request_rename_all_bands "${outputCalDIM}" "${currentBandsListTXT}" "${targetBandsNamesListTXT}" "${outProdRename}")
+[ $? -eq 0 ] || return ${SNAP_REQUEST_ERROR}
+[ $DEBUG -eq 1 ] && cat ${SNAP_REQUEST}
+# report activity in the log
+ciop-log "INFO" "Generated request file: ${SNAP_REQUEST}"
+# report activity in the log
+ciop-log "INFO" "Invoking SNAP-gpt on the generated request file bands renaming"
+# invoke the ESA SNAP toolbox
+gpt $SNAP_REQUEST -c "${CACHE_SIZE}" &> /dev/null
+# check the exit code
+[ $? -eq 0 ] || return $ERR_SNAP
+rm -rf ${outProdStack}.d*
+
+# use the greter pixel spacing as target spacing (in order to downsample if needed, upsampling always avoided)
+local target_spacing=$( get_greater_pixel_spacing ${pixelSpacing} ${pixelSpacingMaster} )
+# check for resampling operator: to be used only if the resolution is differenet from the current product one
+local performResample=""
+if (( $(bc <<< "$target_spacing != $pixelSpacing") )) ; then
+    performResample="true"
+else
+    performResample="false"
+fi
+outProdBasename=$(basename ${prodname})_pre_proc
+outProd=${TMPDIR}/${outProdBasename}
+
+# report activity in the log
+ciop-log "INFO" "Preparing SNAP request file for optical data pre processing"
+# source bands list for
+sourceBandsList=""
+# prepare the SNAP request
+SNAP_REQUEST=$( create_snap_request_rsmpl_rprj_sbs "${outProdRename}.dim" "${performResample}" "${target_spacing}" "${performCropping}" "${subsettingBoxWKT}" "${sourceBandsList}" "${outProd}")
+[ $? -eq 0 ] || return ${SNAP_REQUEST_ERROR}
+[ $DEBUG -eq 1 ] && cat ${SNAP_REQUEST}
+# report activity in the log
+ciop-log "INFO" "Generated request file: ${SNAP_REQUEST}"
+
+# report activity in the log
+ciop-log "INFO" "Invoking SNAP-gpt on the generated request file for optical data pre processing"
+# invoke the ESA SNAP toolbox
+gpt $SNAP_REQUEST -c "${CACHE_SIZE}" &> /dev/null
+# check the exit code
+[ $? -eq 0 ] || return $ERR_SNAP
+
+# create a tar archive where DIM output product is stored and put it in OUTPUT dir
+cd ${TMPDIR}
+tar -cf ${outProdBasename}.tar ${outProdBasename}.d*
+#tar -cjf ${outProdBasename}.tar -C ${TMPDIR} .
+mv ${outProdBasename}.tar ${OUTPUTDIR}
+rm -rf ${outProdBasename}.d*
+rm -rf ${outProdRename}.d*
+cd
+
+}
+
+
 # generic optical mission (not fully supported by SNAP) pre processing function
 function pre_processing_spot_pleiades() {
 
@@ -929,10 +1117,6 @@ local subsettingBoxWKT=$6
 local performOpticalCalibration=$7
 prodBasename=$(basename ${prodname})
 
-# loop to fill contained TIFs and their basenames
-local tifList=${TMPDIR}/tifList.txt
-local filesListCSV=""
-targetBandsNamesListTXT=${TMPDIR}/targetBandsNamesList.txt
 local index=0
 if [[ -d "${prodname}" ]]; then
   jp2_product=""
