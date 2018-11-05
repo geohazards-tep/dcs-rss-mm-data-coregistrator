@@ -13,7 +13,6 @@ source $_CIOP_APPLICATION_PATH/gpt/snap_include.sh
 
 ## put /opt/anaconda/bin ahead to the PATH list to ensure gdal to point to the anaconda installation dir
 export PATH=/opt/anaconda/bin:${PATH}
-#export PATH=/home/rssuser/.conda/envs/csw/bin/:${PATH}
 
 # define the exit codes
 SUCCESS=0
@@ -467,12 +466,14 @@ local inputExt=$2
 local outputExt=$3
 local gainbiasfile=$4
 local solarilluminationsfile=$5
+local other=$6
 local outputfile="${currentProd##*/}"; outputfile="${outputfile%$inputExt}$outputExt"
 
 #run OTB optical calibration
 ciop-log "INFO" "Performing image calibration to ${outputfile}"
 if [[ ! -z "$gainbiasfile" ]] && [[ ! -z "$solarilluminationsfile" ]]  ; then
-    otb_op=$( otbcli_OpticalCalibration -in ${currentProd} -out ${outputfile} -acqui.gainbias ${gainbiasfile} -acqui.solarilluminations ${solarilluminationsfile} -level toa -ram ${RAM_AVAILABLE})
+    echo "otbcli_OpticalCalibration -in ${currentProd} -out ${outputfile} -acqui.gainbias ${gainbiasfile} -acqui.solarilluminations ${solarilluminationsfile} ${other} -level toa"
+    otb_op=$( otbcli_OpticalCalibration -in ${currentProd} -out ${outputfile} -acqui.gainbias ${gainbiasfile} -acqui.solarilluminations ${solarilluminationsfile} ${other} -level toa -ram ${RAM_AVAILABLE})
 else
     otb_op=$( otbcli_OpticalCalibration -in ${currentProd} -out ${outputfile} -level toa -ram ${RAM_AVAILABLE})
 fi
@@ -949,15 +950,6 @@ local performCropping=$4
 local subsettingBoxWKT=$5
 local performOpticalCalibration=$6
 
-# use the greter pixel spacing as target spacing (in order to downsample if needed, upsampling always avoided)
-local target_spacing=$( get_greater_pixel_spacing ${pixelSpacing} ${pixelSpacingMaster} )
-# check for resampling operator: to be used only if the resolution is differenet from the current product one
-local performResample=""
-if (( $(bc <<< "$target_spacing != $pixelSpacing") )) ; then
-    performResample="true"
-else
-    performResample="false"
-fi
 prodBasename=$(basename ${prodname})
 outProdBasename=$(basename ${prodname})_pre_proc
 outProd=${TMPDIR}/${outProdBasename}
@@ -967,28 +959,37 @@ sourceBandsList=$(get_band_list "${prodBasename}" "RapidEye" )
 
 imgfile=$(find ${prodname}/ -name '*_RE2_*.tif' | head -1 )
 
-#Optical Calibration
+#Optical Calibration (visit: http://wiki.equipex-geosud.fr/index.php/Guide_Administrateur#RapidEye)
 if [[ "${performOpticalCalibration}" = true ]]; then
     #get gain and bias values for all bands in dim file
     cd ${prodname}
     gainbiasFile=${TMPDIR}/gainbias.txt
     illuminationsFile=${TMPDIR}/illuminations.txt
-    imgfile=$(find ${prodname}/ -name 'U*.tif')
-    prodDimFile=$(find ${prodname}/ -name 'U*.dim')
+    prodMetadataFile=$(find ${prodname}/ -name '*_RE2_*metadata.xml')
+    sunElevationAngle=$( cat ${prodMetadataFile} | sed -n 's/.*<opt:illuminationElevationAngle uom="deg">\(.*\)<\/opt:illuminationElevationAngle>.*/\1/p')
+    sunElevationAngle=$(printf "%.14f" $sunElevationAngle)
+    acquiDate=$( cat ${prodMetadataFile} | sed -n 's/.*<eop:acquisitionDate>\(.*\)<\/eop:acquisitionDate>.*/\1/p')
+    acquiDateYear=$( echo $acquiDate | cut -d'-' -f 1)
+    acquiDateMonth=$( echo $acquiDate | cut -d'-' -f 2)
+    acquiDateDay=$( echo $acquiDate | cut -d'-' -f 3 | cut -d'T' -f 1)
+    acquiDateHour=$( echo $acquiDate | cut -d'-' -f 3 | cut -d'T' -f 2 | cut -d':' -f 1 )
     gainchain=''
     biaschain=''
+    xIFS=$IFS
     IFS=","
+    c=0
     for b in $sourceBandsList ; do
-        gain=$( cat ${prodDimFile} | sed -n '/'${b}'/{N; s/.*<PHYSICAL_GAIN>\(.*\)<\/PHYSICAL_GAIN>.*/\1/p; }')
+        c=$((c+1))
+        gain=$( cat ${prodMetadataFile} | sed -n '/'${c}'/{s/.*<re:radiometricScaleFactor>\(.*\)<\/re:radiometricScaleFactor>.*/\1/p; }')
+        gain=$( echo "1/$(printf "%.14f" $gain)" | bc -l)
         gainchain=$gainchain':'$gain
-        bias=$( cat ${prodDimFile} | sed -n '/'${b}'/{N; N; s/.*<PHYSICAL_BIAS>\(.*\)<\/PHYSICAL_BIAS>.*/\1/p; }')
-        biaschain=$biaschain':'$bias
     done
+    IFS=$xIFS
     echo ${gainchain#?} > $gainbiasFile
-    echo ${biaschain#?} >> $gainbiasFile
-    echo '1036:1561:1811' >> $illuminationsFile
+    echo '0:0:0:0:0' >> $gainbiasFile
+    echo '1997.8:1863.5:1560.4:1395.0:1124.4' >> $illuminationsFile    #taken from https://www.planet.com/products/satellite-imagery/files/160625-RapidEye%20Image-Product-Specifications.pdf
     #perform the callibration
-    outputfile=$( calibrate_optical_TOA ${imgfile} .tif _toa.tif ${gainbiasFile} ${illuminationsFile})
+    outputfile=$( calibrate_optical_TOA ${imgfile} .tif _toa.tif ${gainbiasFile} ${illuminationsFile} "-acqui.sun.elev ${sunElevationAngle} -acqui.year $acquiDateYear -acqui.month $acquiDateMonth -acqui.day $acquiDateDay -acqui.hour $acquiDateHour")
     rm ${imgfile}
     rm $gainbiasFile
     rm $illuminationsFile
@@ -999,8 +1000,7 @@ fi
 # set output calibrated filename
 outputCal=${imgfile}
 outputCalDIM="${outputCal%.tif}.dim"
-cd $prodBasename
-ciop-log "DEBUG" "The dim file is ${outputCalDIM}"
+cd ${prodname}
 # convert tif to beam dimap format
 ciop-log "INFO" "Invoking SNAP-pconvert on the generated request file for tif to dim conversion"
 pconvert -f dim ${outputCal}
@@ -1022,8 +1022,6 @@ do
 done
 # loop over known product bands to fill target bands list
 targetBandsNamesListTXT=${TMPDIR}/targetBandsNamesList.txt
-# source bands list for Pleiades
-sourceBandsList=$(get_band_list "${prodBasename}" "${mission}" )
 # convert band from comma separted values to space separated values
 bandListSsv=$( echo "${sourceBandsList}" | sed 's|,| |g' )
 # convert ssv to array
@@ -1039,7 +1037,6 @@ for bid in `seq 0 $numBands`; do
         echo ${bandListArray[$bid]} >> ${targetBandsNamesListTXT}
     fi
 done
-
 # build request file for rename all the bands contained into the stack product
 # report activity in the log
 outProdRename=${TMPDIR}/stack_renamed_bands
@@ -1080,7 +1077,6 @@ SNAP_REQUEST=$( create_snap_request_rsmpl_rprj_sbs "${outProdRename}.dim" "${per
 [ $DEBUG -eq 1 ] && cat ${SNAP_REQUEST}
 # report activity in the log
 ciop-log "INFO" "Generated request file: ${SNAP_REQUEST}"
-
 # report activity in the log
 ciop-log "INFO" "Invoking SNAP-gpt on the generated request file for optical data pre processing"
 # invoke the ESA SNAP toolbox
@@ -1091,7 +1087,6 @@ gpt $SNAP_REQUEST -c "${CACHE_SIZE}" &> /dev/null
 # create a tar archive where DIM output product is stored and put it in OUTPUT dir
 cd ${TMPDIR}
 tar -cf ${outProdBasename}.tar ${outProdBasename}.d*
-#tar -cjf ${outProdBasename}.tar -C ${TMPDIR} .
 mv ${outProdBasename}.tar ${OUTPUTDIR}
 rm -rf ${outProdBasename}.d*
 rm -rf ${outProdRename}.d*
