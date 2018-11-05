@@ -1,5 +1,5 @@
 #!/bin/sh
 
-conda update conda -y
-conda install -y --file /application/dependencies/package.list
-pip install rio-toa
+sudo conda update conda -y
+sudo conda install -y --file /application/dependencies/package.list
+sudo pip install rio-toa
