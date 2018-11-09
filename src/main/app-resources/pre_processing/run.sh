@@ -161,6 +161,30 @@ function check_product_type() {
         [[ "$prodTypeName" != "RASTER_ORTHO" ]] && return $ERR_WRONGPRODTYPE
   fi
 
+  if [[ "${mission}" == "VRSS1" ]]; then
+      filename="${retrievedProduct##*/}"; ext="${filename#*.}"
+      # assumption is that the product has .tar extension or is already uncompressed
+      if  [[ "$ext" == "tar" ]]; then
+      # if tar uncompress the product
+          ciop-log "INFO" "Running command: tar xf $retrievedProduct"
+          tar xf $retrievedProduct
+          returnCode=$?
+          [ $returnCode -eq 0 ] || return ${ERR_GETPRODTYPE}
+          # find the fisrt band tif product
+          vrss1_b1=$(find ./ -name '*_1.tif')
+          [[ "${vrss1_b1}" == "" ]] && return ${ERR_GETPRODTYPE}
+          dir_untar_vrss1=$(dirname ${vrss1_b1})
+          rm -r -f ${dir_untar_vrss1}
+      else
+          vrss1_b1=$(find ${retrievedProduct}/ -name '*_1.tif')
+          [[ "${vrss1_b1}" == "" ]] && return ${ERR_GETPRODTYPE}
+      fi
+      # extract product type from product name
+      vrss1_b1=$(basename ${vrss1_b1})
+      l2b_test=$(echo "${vrss1_b1}" | grep "L2B")
+      [[ "${l2b_test}" != "" ]] && prodTypeName="L2B" ||  return $ERR_WRONGPRODTYPE
+  fi
+
   echo ${prodTypeName}
   return 0
 }
@@ -228,6 +252,11 @@ function mission_prod_retrieval(){
         [ "${pleiades_test}" = "" ] || mission="PLEIADES"
         [[ -z "${rapideye_test}" ]] && rapideye_test=$(ls "${retrievedProduct}" | grep "RE2")
         [ "${rapideye_test}" = "" ] || mission="RapidEye"
+        vrss1_test_1=$(echo "${prod_basename}" | grep "VRSS1")
+        vrss1_test_2=$(echo "${prod_basename}" | grep "VRSS-1")
+        if [[ "${vrss1_test_1}" != "" ]] || [[ "${vrss1_test_2}" != "" ]]; then
+            mission="VRSS1"
+        fi
         if [ "${mission}" != "" ] ; then
             echo ${mission}
         else
@@ -315,6 +344,12 @@ case "$mission" in
         "RapidEye")
             rapideye_xml=$(find ${retrievedProduct}/ -name '*_RE2_*_metadata.xml' )
             pixSpac=$( cat ${rapideye_xml} | grep resolution | sed -n -e 's|^.*<eop:resolution uom="m">\(.*\)</eop:resolution>.*|\1|p' )
+            echo  $pixSpac | awk '{ print sprintf("%.9f", $1); }'
+            ;;
+
+        "VRSS1")
+            product_xml=$(find ${retrievedProduct}/ -name 'VRSS*_L2B_*[0-9].xml')
+            pixSpac=$( cat ${product_xml} | grep pixelSpacing | sed -n -e 's|^.*<pixelSpacing>\(.*\)</pixelSpacing>|\1|p' )
             echo  $pixSpac | awk '{ print sprintf("%.9f", $1); }'
             ;;
 
@@ -410,6 +445,11 @@ case "$mission" in
             return $?
 	    ;;
 
+        "VRSS1")
+	    pre_processing_generic_optical "${prodname}" "${mission}" "${pixelSpacing}" "${pixelSpacingMaster}" "${performCropping}" "${subsettingBoxWKT}"
+            return $?
+            ;;
+
         *)
 	    return "${ERR_CALLPREPROCESS}"
 	    ;;
@@ -442,6 +482,10 @@ case "$mission" in
             # always single pol
             bandListCsv=${prodname:38:2}
         ;;
+
+        "VRSS1")
+            bandListCsv="${prodname}_1,${prodname}_2,${prodname}_3,${prodname}_4"
+            ;;
 
         *)
             return "${ERR_BAND_LIST}"
@@ -1532,6 +1576,44 @@ elif [ ${mission} = "Kompsat-3" ]; then
         done
         cd -
     fi
+elif [ ${mission} = "VRSS1" ]; then
+    #Check if downloaded product is compressed and extract it (in tar is not automatically extracted, otherwise yes)
+    ext="${prodname##*/}"; ext="${ext#*.}"
+    ciop-log "INFO" "Product extension is: $ext"
+    # assumption is that the product has .tar extension or is already uncompressed
+    if  [[ "$ext" == "tar" ]]; then
+        ciop-log "INFO" "Extracting $prodname"
+        currentBasename=$(basename $prodname)
+        currentBasename="${currentBasename%%.*}"
+        mkdir -p ${prodname%/*}/${currentBasename}
+        cd ${prodname%/*}
+        filename="${prodname##*/}"
+        tar xf $filename -C ${currentBasename}
+        returnCode=$?
+        [ $returnCode -eq 0 ] || return ${ERR_UNPACKING}
+        prodname=${prodname%/*}/${currentBasename}
+    fi
+    prodBasename=$(basename ${prodname})
+    vrss1_b1=$(find ${prodname}/ -name '*_1.tif')
+    vrss1_name="${vrss1_b1%_1.tif}"
+    vrss1_name=$(basename ${vrss1_name})
+    # in this case the product name is not common
+    # to the base band names ---> rename all bands
+    if [ ${prodBasename} != ${vrss1_name} ]; then
+        # in this case the product name is not common
+        # to the base band names ---> rename all bands
+        for bix in 1 2 3 4 ;
+        do
+           currentTif=$(ls "${prodname}"/*_"${bix}".tif)
+           mv ${currentTif} ${prodname}/${prodBasename}_${bix}.tif
+           [[ $bix == "1"  ]] && ls ${prodname}/${prodBasename}_${bix}.tif > $tifList || ls ${prodname}/${prodBasename}_${bix}.tif >> $tifList
+        done
+    else
+        ls "${prodname}"/*_1.tif > $tifList
+        ls "${prodname}"/*_2.tif >> $tifList
+        ls "${prodname}"/*_3.tif >> $tifList
+        ls "${prodname}"/*_4.tif >> $tifList
+    fi
 else
     return ${ERR_PREPROCESS}
 fi
@@ -1554,16 +1636,32 @@ numProd=$index
 ciop-log "INFO" "Preparing SNAP request file for products stacking"
 # output prodcut name
 outProdStack=${TMPDIR}/stack_product
-# prepare the SNAP request
-SNAP_REQUEST=$( create_snap_request_stack "${filesListCSV}" "${outProdStack}" "${numProd}" )
-[ $? -eq 0 ] || return ${SNAP_REQUEST_ERROR}
-[ $DEBUG -eq 1 ] && cat ${SNAP_REQUEST}
-# report activity in the log
-ciop-log "INFO" "Invoking SNAP-gpt request file for products stacking"
-# invoke the ESA SNAP toolbox
-gpt $SNAP_REQUEST -c "${CACHE_SIZE}" &> /dev/null
-# check the exit code
-[ $? -eq 0 ] || return $ERR_SNAP
+# customized processing for kompsat-2 and VRSS1 because snap fails
+if [ ${mission} = "VRSS1" ] ; then
+    # convert file list from comma separted values to space separated values
+    filesListSsv=$( echo "${filesListCSV}" | sed 's|,| |g' )
+    # convert ssv to array
+    declare -a filesListArray=(${filesListSsv})
+    # gdal_merge to create stack product
+    gdal_merge.py -separate -n 0 "${filesListArray[0]}" "${filesListArray[1]}" "${filesListArray[2]}" "${filesListArray[3]}"  -o ${outProdStack}.tif
+    [ $? -eq 0 ] || return ${ERR_GDAL}
+    # pconvert to convert GeoTIFF to BEAM-DIMAP
+    pconvert -f dim -o ${TMPDIR} ${outProdStack}.tif
+    [ $? -eq 0 ] || return ${ERR_PCONVERT}
+    # remove intermediate GeoTIFF K2 stack
+    rm ${outProdStack}.tif
+else:
+    # prepare the SNAP request
+    SNAP_REQUEST=$( create_snap_request_stack "${filesListCSV}" "${outProdStack}" "${numProd}" )
+    [ $? -eq 0 ] || return ${SNAP_REQUEST_ERROR}
+    [ $DEBUG -eq 1 ] && cat ${SNAP_REQUEST}
+    # report activity in the log
+    ciop-log "INFO" "Invoking SNAP-gpt request file for products stacking"
+    # invoke the ESA SNAP toolbox
+    gpt $SNAP_REQUEST -c "${CACHE_SIZE}" &> /dev/null
+    # check the exit code
+    [ $? -eq 0 ] || return $ERR_SNAP
+fi
 # get band names
 outputCalDIM=${outProdStack}.dim
 currentBandsList=$( xmlstarlet sel -t -v "/Dimap_Document/Image_Interpretation/Spectral_Band_Info/BAND_NAME" ${outputCalDIM} )
