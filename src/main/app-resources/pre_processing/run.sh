@@ -229,7 +229,7 @@ function mission_prod_retrieval(){
         [ "${prod_basename_substr_3}" = "S1B" ] && mission="Sentinel-1"
         [ "${prod_basename_substr_3}" = "S2A" ] && mission="Sentinel-2"
         [ "${prod_basename_substr_3}" = "S2B" ] && mission="Sentinel-2"
-        [ "${prod_basename_substr_3}" = "K5_" ] && mission="Kompsat-5"
+#        [ "${prod_basename_substr_3}" = "K5_" ] && mission="Kompsat-5"
         [ "${prod_basename_substr_3}" = "K3_" ] && mission="Kompsat-3"
         [ "${prod_basename_substr_3}" = "LC8" ] && mission="Landsat-8"
         [ "${prod_basename_substr_4}" = "LS08" ] && mission="Landsat-8"
@@ -252,11 +252,11 @@ function mission_prod_retrieval(){
         [ "${pleiades_test}" = "" ] || mission="PLEIADES"
         [[ -z "${rapideye_test}" ]] && rapideye_test=$(ls "${retrievedProduct}" | grep "RE2")
         [ "${rapideye_test}" = "" ] || mission="RapidEye"
-        vrss1_test_1=$(echo "${prod_basename}" | grep "VRSS1")
-        vrss1_test_2=$(echo "${prod_basename}" | grep "VRSS-1")
-        if [[ "${vrss1_test_1}" != "" ]] || [[ "${vrss1_test_2}" != "" ]]; then
-            mission="VRSS1"
-        fi
+#        vrss1_test_1=$(echo "${prod_basename}" | grep "VRSS1")
+#        vrss1_test_2=$(echo "${prod_basename}" | grep "VRSS-1")
+#        if [[ "${vrss1_test_1}" != "" ]] || [[ "${vrss1_test_2}" != "" ]]; then
+#            mission="VRSS1"
+#        fi
         if [ "${mission}" != "" ] ; then
             echo ${mission}
         else
