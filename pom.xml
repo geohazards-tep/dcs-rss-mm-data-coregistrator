@@ -56,6 +56,9 @@
                     <require>click</require>
                     <require>rasterio</require>
                   </requires>
+                  <postinstallScriptlet combine.self="override">
+                    <script>conda update conda -y &amp;&amp; conda install --file /application/dependencies/packages.list &amp;&amp; pip install rio-toa</script>
+                  </postinstallScriptlet>
                 </configuration>
               </execution>
             </executions>
