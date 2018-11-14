@@ -53,11 +53,9 @@
                   <requires>
                     <require>snap = 5.0-1.el6</require>
                     <require>OTB</require>
-                    <require>click</require>
-                    <require>rasterio</require>
                   </requires>
                   <postinstallScriptlet combine.self="override">
-                    <script>conda update conda -y &amp;&amp; conda install --file /application/dependencies/packages.list &amp;&amp; pip install rio-toa</script>
+                    <script>conda update conda -y &amp;&amp; conda install --file /application/dependencies/packages.list</script>
                   </postinstallScriptlet>
                 </configuration>
               </execution>

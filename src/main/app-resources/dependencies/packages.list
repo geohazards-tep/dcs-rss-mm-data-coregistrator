@@ -1,0 +1,6 @@
+# This file may be used to create an environment using:
+# $ conda create --name <env> --file <this file>
+# platform: linux-64
+rio-toa=0.3.0
+click=7.0
+rasterio=0.36.0
