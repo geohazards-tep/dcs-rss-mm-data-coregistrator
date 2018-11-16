@@ -186,6 +186,24 @@ function check_product_type() {
       [[ "${l2b_test}" != "" ]] && prodTypeName="L2B" ||  return $ERR_WRONGPRODTYPE
   fi
 
+  if [[ "${mission}" == "GF2" ]]; then
+      filename="${retrievedProduct##*/}"; ext="${filename#*.}"
+      # assumption is that the product has .tar extension
+      if  [[ "$ext" == "tar" ]]; then
+          ciop-log "INFO" "Running command: tar xf $retrievedProduct *MSS2.xml"
+          tar xf $retrievedProduct *MSS2.xml
+          returnCode=$?
+          [ $returnCode -eq 0 ] || return ${ERR_GETPRODTYPE}
+          prodTypeName=$(sed -n -e 's|^.*<ProductLevel>\(.*\)</ProductLevel>$|\1|p' *MSS2.xml)
+          rm -f *MSS2.xml
+      else
+	  ciop-log "ERROR" "Failed to get product type from : ${retrievedProduct}"
+	  ciop-log "ERROR" "Product extension not equal to the expected"
+          return $ERR_WRONGPRODTYPE
+      fi
+      [[ "$prodTypeName" != "LEVEL2A" ]] && return $ERR_WRONGPRODTYPE
+  fi
+
   echo ${prodTypeName}
   return 0
 }
@@ -231,6 +249,7 @@ function mission_prod_retrieval(){
         [ "${prod_basename_substr_3}" = "S2A" ] && mission="Sentinel-2"
         [ "${prod_basename_substr_3}" = "S2B" ] && mission="Sentinel-2"
 #        [ "${prod_basename_substr_3}" = "K5_" ] && mission="Kompsat-5"
+#        [ "${prod_basename_substr_3}" = "GF2" ] && mission="GF2"
         [ "${prod_basename_substr_3}" = "K3_" ] && mission="Kompsat-3"
         [ "${prod_basename_substr_3}" = "LC8" ] && mission="Landsat-8"
         [ "${prod_basename_substr_4}" = "LS08" ] && mission="Landsat-8"
@@ -357,6 +376,9 @@ case "$mission" in
 #            pixSpac=$( cat ${product_xml} | grep pixelSpacing | sed -n -e 's|^.*<pixelSpacing>\(.*\)</pixelSpacing>|\1|p' )
 #            echo  $pixSpac | awk '{ print sprintf("%.9f", $1); }'
 #            ;;
+        "GF2")
+            echo 10
+            ;;
 
         *)
             return ${ERR_GETPIXELSPACING}
@@ -451,6 +473,11 @@ case "$mission" in
 	    ;;
 
         "VRSS1")
+	        pre_processing_generic_optical "${prodname}" "${mission}" "${pixelSpacing}" "${pixelSpacingMaster}" "${performCropping}" "${subsettingBoxWKT}" "${performOpticalCalibration}"
+            return $?
+            ;;
+
+        "GF2")
 	        pre_processing_generic_optical "${prodname}" "${mission}" "${pixelSpacing}" "${pixelSpacingMaster}" "${performCropping}" "${subsettingBoxWKT}" "${performOpticalCalibration}"
             return $?
             ;;
@@ -1650,6 +1677,46 @@ elif [ ${mission} = "VRSS1" ]; then
         done
         cd -
     fi
+elif [[ "${mission}" == "GF2" ]]; then
+    filename="${retrievedProduct##*/}"; ext="${filename#*.}"
+    # check extension, uncrompress and get product name
+    if [[ "$ext" == "tar" ]]; then
+      ciop-log "INFO" "Extracting $retrievedProduct"
+      currentBasename=$(basename $retrievedProduct)
+      currentBasename="${currentBasename%%.*}"
+      mkdir -p ${retrievedProduct%/*}/${currentBasename}
+      cd ${retrievedProduct%/*}
+      tar xf $filename -C ${currentBasename}
+      returnCode=$?
+      [ $returnCode -eq 0 ] || return ${ERR_UNPACKING}
+      prodname=${retrievedProduct%/*}/${currentBasename}
+      prodBasename=$(basename ${prodname})
+      # get multispectral tif product
+      mss_product=$(ls "${prodname}"/*MSS2.tiff)
+    else
+      return ${ERR_GETDATA}
+    fi
+    #define output filename
+    outputfile=${prodBasename}.tif
+    # create full resolution tif image with Red=B4(NIR) Green=B3(RED) Blue=B2(GREEN)
+    # histogram skip (percentiles from 2 to 96) on separated bands
+    python $_CIOP_APPLICATION_PATH/data_download_publish/hist_skip_no_zero.py "${mss_product}" 4 2 96 "temp-outputfile_band_r.tif"
+    python $_CIOP_APPLICATION_PATH/data_download_publish/hist_skip_no_zero.py "${mss_product}" 3 2 96 "temp-outputfile_band_g.tif"
+    python $_CIOP_APPLICATION_PATH/data_download_publish/hist_skip_no_zero.py "${mss_product}" 2 2 96 "temp-outputfile_band_b.tif"
+    # merge RGB bands
+    gdal_merge.py -separate -n 0 -a_nodata 0 -co "PHOTOMETRIC=RGB" -co "ALPHA=YES" "temp-outputfile_band_r.tif" "temp-outputfile_band_g.tif" "temp-outputfile_band_b.tif" -o ${TMPDIR}/temp-outputfile.tif
+    # rm temp files
+    rm temp-outputfile_band_r.tif temp-outputfile_band_g.tif temp-outputfile_band_b.tif
+    # re-projection
+    gdalwarp -ot Byte -t_srs EPSG:3857 -srcnodata 0 -dstnodata 0 -dstalpha -co "TILED=YES" -co "BLOCKXSIZE=512" -co "BLOCKYSIZE=512" -co "PHOTOMETRIC=RGB" -co "ALPHA=YES" ${TMPDIR}/temp-outputfile.tif ${OUTPUTDIR}/${outputfile}
+    returnCode=$?
+    [ $returnCode -eq 0 ] || return ${ERR_CONVERT}
+    # rm temp files
+    rm ${TMPDIR}/temp-outputfile.tif
+    #Add overviews
+    gdaladdo -r average ${OUTPUTDIR}/$outputfile 2 4 8 16
+    returnCode=$?
+    [ $returnCode -eq 0 ] || return ${ERR_CONVERT}
 else
     return ${ERR_PREPROCESS}
 fi
