@@ -253,12 +253,12 @@ function mission_prod_retrieval(){
         [ "${pleiades_test}" = "" ] || mission="PLEIADES"
         [[ -z "${rapideye_test}" ]] && rapideye_test=$(ls "${retrievedProduct}" | grep "RE2")
         [ "${rapideye_test}" = "" ] || mission="RapidEye"
-        vrss1_test_1=$(echo "${prod_basename}" | grep "VRSS1")
-        vrss1_test_2=$(echo "${prod_basename}" | grep "VRSS-1")
-        vrss1_test_3=$(ls "${retrievedProduct}" | grep "VRSS")
-        if [[ "${vrss1_test_1}" != "" ]] || [[ "${vrss1_test_2}" != "" ]] || [[ "${vrss1_test_3}" != "" ]]; then
-            mission="VRSS1"
-        fi
+#        vrss1_test_1=$(echo "${prod_basename}" | grep "VRSS1")
+#        vrss1_test_2=$(echo "${prod_basename}" | grep "VRSS-1")
+#        vrss1_test_3=$(ls "${retrievedProduct}" | grep "VRSS")
+#        if [[ "${vrss1_test_1}" != "" ]] || [[ "${vrss1_test_2}" != "" ]] || [[ "${vrss1_test_3}" != "" ]]; then
+#            mission="VRSS1"
+#        fi
         if [ "${mission}" != "" ] ; then
             echo ${mission}
         else
