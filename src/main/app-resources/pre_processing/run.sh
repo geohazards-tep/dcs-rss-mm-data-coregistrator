@@ -13,6 +13,7 @@ source $_CIOP_APPLICATION_PATH/gpt/snap_include.sh
 
 ## put /opt/anaconda/bin ahead to the PATH list to ensure gdal to point to the anaconda installation dir
 export PATH=/opt/anaconda/bin:${PATH}
+#export PATH=/home/rssuser/.conda/envs/csw/bin:${PATH}
 
 # define the exit codes
 SUCCESS=0
@@ -254,7 +255,8 @@ function mission_prod_retrieval(){
         [ "${rapideye_test}" = "" ] || mission="RapidEye"
 #        vrss1_test_1=$(echo "${prod_basename}" | grep "VRSS1")
 #        vrss1_test_2=$(echo "${prod_basename}" | grep "VRSS-1")
-#        if [[ "${vrss1_test_1}" != "" ]] || [[ "${vrss1_test_2}" != "" ]]; then
+#        vrss1_test_3=$(ls "${retrievedProduct}" | grep "VRSS")
+#        if [[ "${vrss1_test_1}" != "" ]] || [[ "${vrss1_test_2}" != "" ]] || [[ "${vrss1_test_3}" != "" ]]; then
 #            mission="VRSS1"
 #        fi
         if [ "${mission}" != "" ] ; then
@@ -348,10 +350,13 @@ case "$mission" in
             ;;
 
         "VRSS1")
-            product_xml=$(find ${retrievedProduct}/ -name 'VRSS*_L2B_*[0-9].xml')
-            pixSpac=$( cat ${product_xml} | grep pixelSpacing | sed -n -e 's|^.*<pixelSpacing>\(.*\)</pixelSpacing>|\1|p' )
-            echo  $pixSpac | awk '{ print sprintf("%.9f", $1); }'
+            echo 10
             ;;
+#            product_xml=$(find ${retrievedProduct}/ -name 'VRSS*_L2B_*[0-9].xml')
+#            ciop-log "DEBUG" "metadata file is $product_xml"
+#            pixSpac=$( cat ${product_xml} | grep pixelSpacing | sed -n -e 's|^.*<pixelSpacing>\(.*\)</pixelSpacing>|\1|p' )
+#            echo  $pixSpac | awk '{ print sprintf("%.9f", $1); }'
+#            ;;
 
         *)
             return ${ERR_GETPIXELSPACING}
@@ -446,7 +451,7 @@ case "$mission" in
 	    ;;
 
         "VRSS1")
-	    pre_processing_generic_optical "${prodname}" "${mission}" "${pixelSpacing}" "${pixelSpacingMaster}" "${performCropping}" "${subsettingBoxWKT}"
+	        pre_processing_generic_optical "${prodname}" "${mission}" "${pixelSpacing}" "${pixelSpacingMaster}" "${performCropping}" "${subsettingBoxWKT}" "${performOpticalCalibration}"
             return $?
             ;;
 
@@ -539,7 +544,6 @@ local outputfile="${currentProd##*/}"; outputfile="${outputfile%$inputExt}$outpu
 #run OTB optical calibration
 ciop-log "INFO" "Performing image calibration to ${outputfile}"
 if [[ ! -z "$gainbiasfile" ]] && [[ ! -z "$solarilluminationsfile" ]]  ; then
-    echo "otbcli_OpticalCalibration -in ${currentProd} -out ${outputfile} -acqui.gainbias ${gainbiasfile} -acqui.solarilluminations ${solarilluminationsfile} ${other} -level toa"
     otb_op=$( otbcli_OpticalCalibration -in ${currentProd} -out ${outputfile} -acqui.gainbias ${gainbiasfile} -acqui.solarilluminations ${solarilluminationsfile} ${other} -level toa -ram ${RAM_AVAILABLE})
 else
     otb_op=$( otbcli_OpticalCalibration -in ${currentProd} -out ${outputfile} -level toa -ram ${RAM_AVAILABLE})
@@ -1599,20 +1603,52 @@ elif [ ${mission} = "VRSS1" ]; then
     vrss1_name=$(basename ${vrss1_name})
     # in this case the product name is not common
     # to the base band names ---> rename all bands
-    if [ ${prodBasename} != ${vrss1_name} ]; then
-        # in this case the product name is not common
-        # to the base band names ---> rename all bands
-        for bix in 1 2 3 4 ;
-        do
-           currentTif=$(ls "${prodname}"/*_"${bix}".tif)
-           mv ${currentTif} ${prodname}/${prodBasename}_${bix}.tif
-           [[ $bix == "1"  ]] && ls ${prodname}/${prodBasename}_${bix}.tif > $tifList || ls ${prodname}/${prodBasename}_${bix}.tif >> $tifList
+#    if [ ${prodBasename} != ${vrss1_name} ]; then
+#        # in this case the product name is not common
+#        # to the base band names ---> rename all bands
+#        echo we re inside
+#        for bix in 1 2 3 4 ;
+#        do
+#           currentTif=$(ls "${prodname}"/*_"${bix}".tif)
+#           echo $currentTif
+#           mv ${currentTif} ${prodname}/${prodBasename}_${bix}.tif
+#           [[ $bix == "1"  ]] && ls ${prodname}/${prodBasename}_${bix}.tif > $tifList || ls ${prodname}/${prodBasename}_${bix}.tif >> $tifList
+#        done
+#    else
+        ls "${prodname}"/VRSS*_1.tif > $tifList
+        ls "${prodname}"/VRSS*_2.tif >> $tifList
+        ls "${prodname}"/VRSS*_3.tif >> $tifList
+        ls "${prodname}"/VRSS*_4.tif >> $tifList
+#    fi
+
+    if [[ "${performOpticalCalibration}" = true ]]; then
+        # source bands list for Rapideye
+        sourceBandsList=$(get_band_list "${prodBasename}" "VRSS1" )
+        #get gain and bias values for all bands in dim file
+        cd ${prodname}
+        prodMetadataFile=$(find ${retrievedProduct}/ -name 'VRSS*_L2B_*[0-9].xml')
+        illuminations=$( cat ${prodMetadataFile} | sed -n '{s/.*<SolarIrradiance.*>\(.*\)<\/SolarIrradiance>.*/\1/p; }')
+        bias=$( cat ${prodMetadataFile} | sed -n '{s/.*<K>\(.*\)<\/K>/\1/p; }')
+        gains=$( cat ${prodMetadataFile} | sed -n '{s/.*<B>\(.*\)<\/B>/\1/p; }')
+        illuminations=$( echo ${illuminations} | sed 's/ /:/g')
+        bias=$( echo ${bias} | sed 's/ /:/g')
+        gains=$( echo ${gains} | sed 's/ /:/g')
+        #perform the callibration for each band
+        n=0
+        for tif in $(cat "${tifList}"); do
+            gainbiasFile=${TMPDIR}/gainbias.txt
+            illuminationsFile=${TMPDIR}/illuminations.txt
+            n=$(($n+1))
+            echo $gains | cut -d':' -f$n > $gainbiasFile
+            echo $bias| cut -d':' -f$n >> $gainbiasFile
+            echo ${illuminations#?} | cut -d':' -f$n > $illuminationsFile
+            outputfile=$( calibrate_optical_TOA ${tif} .tif _toa.tif ${gainbiasFile} ${illuminationsFile})
+            rm $gainbiasFile
+            rm $illuminationsFile
+            rm ${tif}
+            mv ${outputfile} ${tif}
         done
-    else
-        ls "${prodname}"/*_1.tif > $tifList
-        ls "${prodname}"/*_2.tif >> $tifList
-        ls "${prodname}"/*_3.tif >> $tifList
-        ls "${prodname}"/*_4.tif >> $tifList
+        cd -
     fi
 else
     return ${ERR_PREPROCESS}
@@ -1650,7 +1686,7 @@ if [ ${mission} = "VRSS1" ] ; then
     [ $? -eq 0 ] || return ${ERR_PCONVERT}
     # remove intermediate GeoTIFF K2 stack
     rm ${outProdStack}.tif
-else:
+else
     # prepare the SNAP request
     SNAP_REQUEST=$( create_snap_request_stack "${filesListCSV}" "${outProdStack}" "${numProd}" )
     [ $? -eq 0 ] || return ${SNAP_REQUEST_ERROR}
@@ -1678,7 +1714,6 @@ do
         echo  ${currentBandsList[${index}]} >> ${currentBandsListTXT}
     fi
 done
-
 
 # build request file for rename all the bands contained into the stack product
 # report activity in the log
@@ -2341,6 +2376,10 @@ function main() {
             cat ${TMPDIR}/ciop_copy.stderr
             return $ERR_NORETRIEVEDPROD
         fi
+#        cp -r /data/a5_18090725000093 ${TMPDIR}/a5_18090725000093
+#        chmod -R 0755 ${TMPDIR}/a5_18090725000093
+#        retrievedProduct=${TMPDIR}/a5_18090725000093
+
 #        unzippedFolder=$(ls $retrievedProduct)
 #        # log the value, it helps debugging.
 #        # the log entry is available in the process stderr
