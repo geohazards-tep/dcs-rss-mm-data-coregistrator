@@ -11,7 +11,7 @@
     <version>2.0.0</version>
   </parent>
   <description>This service performs the coregistration of remote sensing data from different missions</description>
-  <version>1.1.2-SNAPSHOT</version>
+  <version>1.1.3-SNAPSHOT</version>
   <properties>
     <summary>Multi mission data co-registrator</summary>
     <description>This service performs the coregistration of remote sensing data from different missions</description>
@@ -45,18 +45,22 @@
                   <goal>rpm</goal>
                 </goals>
                 <configuration>
-                  <postinstallScriptlet>
-						<scriptFile>${basedir}/src/main/scripts/post_install.sh</scriptFile>
-						<fileEncoding>utf-8</fileEncoding>
-                  </postinstallScriptlet>
                   <!-- Set here the dependencies installed with 'sudo yum install'-->
                   <requires>
                     <require>snap = 5.0-1.el6</require>
                     <require>OTB</require>
+                    <require>miniconda</require>
+                    <!--<require>snap6</require>-->
+                    <require>proj-devel</require>
+                    <require>openjpeg2</require>
                   </requires>
-                  <postinstallScriptlet combine.self="override">
-                    <script>conda update conda -y &amp;&amp; conda install --file /application/dependencies/packages.list</script>
+                  <postinstallScriptlet>
+                      <scriptFile>${basedir}/src/main/scripts/post_install.sh</scriptFile>
+                      <fileEncoding>utf-8</fileEncoding>
                   </postinstallScriptlet>
+                  <!--<postinstallScriptlet combine.self="override">-->
+                    <!--<script>conda update conda -y &amp;&amp; conda install &#45;&#45;file /application/dependencies/packages.list &amp;&amp; export PATH=/opt/anaconda/bin:$PATH &amp;&amp; pip install rio-toa</script>-->
+                  <!--</postinstallScriptlet>-->
                 </configuration>
               </execution>
             </executions>
