@@ -54,9 +54,9 @@
                     <require>proj-devel</require>
                     <require>openjpeg2</require>
                   </requires>
-                  <postinstallScriptlet>
-                      <scriptFile>${basedir}/src/main/scripts/post_install.sh</scriptFile>
-                      <fileEncoding>utf-8</fileEncoding>
+                  <postinstallScriptlet combine.self="override">
+                    <scriptFile>${basedir}/src/main/scripts/post_install.sh</scriptFile>
+                    <fileEncoding>utf-8</fileEncoding>
                   </postinstallScriptlet>
                   <!--<postinstallScriptlet combine.self="override">-->
                     <!--<script>conda update conda -y &amp;&amp; conda install &#45;&#45;file /application/dependencies/packages.list &amp;&amp; export PATH=/opt/anaconda/bin:$PATH &amp;&amp; pip install rio-toa</script>-->
