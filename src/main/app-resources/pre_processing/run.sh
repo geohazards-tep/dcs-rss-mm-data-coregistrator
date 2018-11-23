@@ -2973,14 +2973,11 @@ function main() {
         ciop-log "INFO" "Retrieving ${currentProduct}"
         # retrieve product to the local temporary folder TMPDIR provided by the framework (this folder is only used by this process)
         # the utility returns the local path of the retrieved product
-#        retrievedProduct=$( get_data "${currentProduct}" "${TMPDIR}" )
-#        if [ $? -ne 0  ] ; then
-#            cat ${TMPDIR}/ciop_copy.stderr
-#            return $ERR_NORETRIEVEDPROD
-#        fi
-        cp -r /data/RS2_OK76385_PK678073_DK606762_F2N_20080419_142127_HH_HV_SGF ${TMPDIR}/RS2_OK76385_PK678073_DK606762_F2N_20080419_142127_HH_HV_SGF
-        chmod -R 0755 ${TMPDIR}/RS2_OK76385_PK678073_DK606762_F2N_20080419_142127_HH_HV_SGF
-        retrievedProduct=${TMPDIR}/RS2_OK76385_PK678073_DK606762_F2N_20080419_142127_HH_HV_SGF
+        retrievedProduct=$( get_data "${currentProduct}" "${TMPDIR}" )
+        if [ $? -ne 0  ] ; then
+            cat ${TMPDIR}/ciop_copy.stderr
+            return $ERR_NORETRIEVEDPROD
+        fi
 
 #        unzippedFolder=$(ls $retrievedProduct)
 #        # log the value, it helps debugging.
