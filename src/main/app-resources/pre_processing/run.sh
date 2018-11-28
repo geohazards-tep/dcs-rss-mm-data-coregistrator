@@ -288,13 +288,13 @@ function mission_prod_retrieval(){
         [ "${prod_basename_substr_4}" = "FCGC" ] && mission="PLEIADES"
         [ "${prod_basename_substr_5}" = "U2007" ] && mission="UK-DMC2"
         [ "${prod_basename_substr_5}" = "ORTHO" ] && mission="UK-DMC2"
-        [ "${prod_basename}" = "Resurs-P" ] && mission="Resurs-P"
-        [ "${prod_basename_substr_4}" = "RS2_" ] && mission="Radarsat-2"
-        if [[ "${prod_basename_substr_9}" == "KANOPUS_V" ]] || [[ "${prod_basename_substr_9}" == "KANOPUS-V" ]] || [[ "${prod_basename_substr_9}" == "Kanopus-V" ]] || [[ "${prod_basename_substr_9}" == "Kanopus_V" ]] ; then
-            mission="Kanopus-V"
-        fi
-        alos2_test=$(echo "${prod_basename}" | grep "ALOS2")
-        [ "${alos2_test}" = "" ] || mission="Alos-2"
+#        [ "${prod_basename}" = "Resurs-P" ] && mission="Resurs-P"
+#        [ "${prod_basename_substr_4}" = "RS2_" ] && mission="Radarsat-2"
+#        if [[ "${prod_basename_substr_9}" == "KANOPUS_V" ]] || [[ "${prod_basename_substr_9}" == "KANOPUS-V" ]] || [[ "${prod_basename_substr_9}" == "Kanopus-V" ]] || [[ "${prod_basename_substr_9}" == "Kanopus_V" ]] ; then
+#            mission="Kanopus-V"
+#        fi
+#        alos2_test=$(echo "${prod_basename}" | grep "ALOS2")
+#        [ "${alos2_test}" = "" ] || mission="Alos-2"
         spot6_test=$(echo "${prod_basename}" | grep "SPOT6")
         [[ -z "${spot6_test}" ]] && spot6_test=$(ls "${retrievedProduct}" | grep "SPOT6")
         [ "${spot6_test}" = "" ] || mission="SPOT-6"
@@ -2094,18 +2094,19 @@ if [ ${mission} = "Landsat-8" ]; then
         ls "${prodname}"/LS08*_B[0-1][0-7,9]${ext} > $tifList
     fi
     if [[ "${performOpticalCalibration}" = true ]]; then
-        for tif in $(cat "${tifList}"); do
-            if [[ $tif != *LC*_B1[0,1]* ]]; then
-                ciop-log "INFO" "Performing radiometric calibration for $tif"
-                cd $( dirname ${tif})
-                metadatafile=$(ls ${prodname}/*_MTL.txt)
-                outputfile="${tif%.TIF}_toa.tif"
-                rio toa reflectance ${tif} ${metadatafile} ${outputfile}
-                rm $tif
-                mv $outputfile $tif
-            fi
-            cd -
-        done
+        ciop-log "INFO" "Calibration for Landsat8 not yet available"
+#        for tif in $(cat "${tifList}"); do
+#            if [[ $tif != *LC*_B1[0,1]* ]]; then
+#                ciop-log "INFO" "Performing radiometric calibration for $tif"
+#                cd $( dirname ${tif})
+#                metadatafile=$(ls ${prodname}/*_MTL.txt)
+#                outputfile="${tif%.TIF}_toa.tif"
+#                rio toa reflectance ${tif} ${metadatafile} ${outputfile}
+#                rm $tif
+#                mv $outputfile $tif
+#            fi
+#            cd -
+#        done
     fi
 elif [ ${mission} = "Kompsat-2" ]; then
     ext=".tif"
