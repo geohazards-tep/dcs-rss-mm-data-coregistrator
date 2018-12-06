@@ -35,8 +35,9 @@ ERR_UNPACKING=15
 ERR_BAND_LIST=16
 ERR_AOI=17
 ERR_GDAL=18
-ERR_OTB=19
+ERR_CALIB=19
 ERR_CONVERT=20
+ERR_GETTILENUM=21
 
 
 # add a trap to exit gracefully
@@ -65,8 +66,9 @@ function cleanExit ()
 	    ${ERR_BAND_LIST})   	  msg="Error while retrieving the list of contained bands within product";;
 	    ${ERR_AOI})               msg="Error: input SubsetBoundingBox has no intersection with input data";;
 	    ${ERR_GDAL})              msg="Gdal_translate failed to process";;
-	    ${ERR_OTB})          	  msg="Orfeo Toolbox failed to process";;
+	    ${ERR_CALIB})          	  msg="Error during calibration procedure";;
 	    ${ERR_CONVERT})           msg="Convert failed to process";;
+	    ${ERR_GETTILENUM})         msg="Error while retrieving the number of tiles of an image";;
         *)                        msg="Unknown error";;
     esac
 
@@ -662,9 +664,11 @@ if [[ ! -z "$gainbiasfile" ]] && [[ ! -z "$solarilluminationsfile" ]]  ; then
 else
     otb_op=$( otbcli_OpticalCalibration -in ${currentProd} -out ${outputfile} -level toa -ram ${RAM_AVAILABLE})
 fi
-#returnCode=$?
-#[ $returnCode -eq 0 ] || return ${ERR_OTB}
-echo ${outputfile}
+if [${outputfile}!=""] ; then
+    echo ${outputfile}
+else
+    return $ERR_CALIB
+fi
 }
 
 # function that compares the pixel spacing and returns the greter one
@@ -697,7 +701,11 @@ function get_num_tiles() {
 local prodname=$1
 spot_xml=$(find ${prodname}/ -name 'DIM_*MS_*.XML')
 numTiles=$(sed -n -e 's|^.*<NTILES>\(.*\)</NTILES>$|\1|p' ${spot_xml})
-echo ${numTiles}
+if [${numTiles}!=""]; then
+    echo ${numTiles}
+else
+    return $ERR_GETTILENUM
+fi
 }
 
 # Sentinel-1 pre processing function
@@ -2102,6 +2110,8 @@ if [ ${mission} = "Landsat-8" ]; then
 #                metadatafile=$(ls ${prodname}/*_MTL.txt)
 #                outputfile="${tif%.TIF}_toa.tif"
 #                rio toa reflectance ${tif} ${metadatafile} ${outputfile}
+#                 returnCode=$?
+#                 [ $returnCode -eq 0 ] || return ${ERR_CALIB}
 #                rm $tif
 #                mv $outputfile $tif
 #            fi
