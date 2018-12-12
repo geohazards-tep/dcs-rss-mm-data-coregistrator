@@ -282,7 +282,7 @@ function mission_prod_retrieval(){
         [ "${prod_basename_substr_3}" = "S2A" ] && mission="Sentinel-2"
         [ "${prod_basename_substr_3}" = "S2B" ] && mission="Sentinel-2"
 #        [ "${prod_basename_substr_3}" = "K5_" ] && mission="Kompsat-5"
-#        [ "${prod_basename_substr_3}" = "GF2" ] && mission="GF2"
+        [ "${prod_basename_substr_3}" = "GF2" ] && mission="GF2"
         [ "${prod_basename_substr_3}" = "K3_" ] && mission="Kompsat-3"
         [ "${prod_basename_substr_3}" = "LC8" ] && mission="Landsat-8"
         [ "${prod_basename_substr_4}" = "LS08" ] && mission="Landsat-8"
@@ -292,9 +292,9 @@ function mission_prod_retrieval(){
         [ "${prod_basename_substr_5}" = "ORTHO" ] && mission="UK-DMC2"
 #        [ "${prod_basename}" = "Resurs-P" ] && mission="Resurs-P"
 #        [ "${prod_basename_substr_4}" = "RS2_" ] && mission="Radarsat-2"
-#        if [[ "${prod_basename_substr_9}" == "KANOPUS_V" ]] || [[ "${prod_basename_substr_9}" == "KANOPUS-V" ]] || [[ "${prod_basename_substr_9}" == "Kanopus-V" ]] || [[ "${prod_basename_substr_9}" == "Kanopus_V" ]] ; then
-#            mission="Kanopus-V"
-#        fi
+        if [[ "${prod_basename_substr_9}" == "KANOPUS_V" ]] || [[ "${prod_basename_substr_9}" == "KANOPUS-V" ]] || [[ "${prod_basename_substr_9}" == "Kanopus-V" ]] || [[ "${prod_basename_substr_9}" == "Kanopus_V" ]] ; then
+            mission="Kanopus-V"
+        fi
 #        alos2_test=$(echo "${prod_basename}" | grep "ALOS2")
 #        [ "${alos2_test}" = "" ] || mission="Alos-2"
         spot6_test=$(echo "${prod_basename}" | grep "SPOT6")
@@ -308,12 +308,12 @@ function mission_prod_retrieval(){
         [ "${pleiades_test}" = "" ] || mission="PLEIADES"
         [[ -z "${rapideye_test}" ]] && rapideye_test=$(ls "${retrievedProduct}" | grep "RE2")
         [ "${rapideye_test}" = "" ] || mission="RapidEye"
-#        vrss1_test_1=$(echo "${prod_basename}" | grep "VRSS1")
-#        vrss1_test_2=$(echo "${prod_basename}" | grep "VRSS-1")
-#        vrss1_test_3=$(ls "${retrievedProduct}" | grep "VRSS")
-#        if [[ "${vrss1_test_1}" != "" ]] || [[ "${vrss1_test_2}" != "" ]] || [[ "${vrss1_test_3}" != "" ]]; then
-#            mission="VRSS1"
-#        fi
+        vrss1_test_1=$(echo "${prod_basename}" | grep "VRSS1")
+        vrss1_test_2=$(echo "${prod_basename}" | grep "VRSS-1")
+        vrss1_test_3=$(ls "${retrievedProduct}" | grep "VRSS")
+        if [[ "${vrss1_test_1}" != "" ]] || [[ "${vrss1_test_2}" != "" ]] || [[ "${vrss1_test_3}" != "" ]]; then
+            mission="VRSS1"
+        fi
 
         if [ "${mission}" != "" ] ; then
             echo ${mission}
@@ -663,6 +663,21 @@ fi
 [ -f ${outputfile} ] && echo ${outputfile} || return $ERR_CALIB
 }
 
+function unpack_geotiff() {
+# function to unpack compressed geotiff files
+
+local geotiffProd=$1
+local outputfile=${TMPDIR}/$(basename ${geotiffProd})
+
+check_packed=$(gdalinfo $geotiffProd | grep COMPRESSION=LZW)
+if [ $check_packed == "COMPRESSION=LZW" ]; then
+    ciop-log "INFO" "Unpacking GeoTiff file"
+    gdal_translate ${geotiffProd} ${outputfile} -of GTiff
+    [ $? -eq 0 ] || return $ERR_GDAL
+    mv ${outputfile} ${geotiffProd}
+fi
+}
+
 # function that compares the pixel spacing and returns the greter one
 function get_greater_pixel_spacing() {
 
@@ -686,7 +701,6 @@ fi
 
 echo $out_spacing
 }
-
 
 function get_num_tiles() {
 local prodname=$1
@@ -747,7 +761,6 @@ mv ${outProdBasename}.tar ${OUTPUTDIR}
 rm -rf ${outProdBasename}.d*
 cd -
 }
-
 
 function create_snap_request_pre_processing_s1() {
 
@@ -868,7 +881,6 @@ mv ${outProdBasename}.tar ${OUTPUTDIR}
 rm -rf ${outProdBasename}.d*
 cd -
 }
-
 
 function create_snap_request_pre_processing_rs2() {
 
@@ -1226,7 +1238,6 @@ mv ${outProdBasename}.tar ${OUTPUTDIR}
 rm -rf ${outProdBasename}.d*
 cd -
 }
-
 
 # UKDMC2 pre processing function
 function pre_processing_ukdmc2() {
@@ -1602,7 +1613,6 @@ rm -rf ${outProdRename}.d*
 cd
 }
 
-
 # generic optical mission (not fully supported by SNAP) pre processing function
 function pre_processing_spot_pleiades() {
 
@@ -1815,24 +1825,24 @@ if [ ${mission} = "Landsat-8" ]; then
     fi
     cd -
     if [[ "${performOpticalCalibration}" = true ]]; then
-#        ciop-log "INFO" "Calibration for Landsat8 not yet available"
+        ciop-log "INFO" "Calibration for Landsat8 not yet available"
 #        metadatafile=$(ls ${prodname}/*_MTL.txt)
 #        outputfile=${prodname}_
 #        rio toa reflectance $(cat "${tifList}") ${metadatafile} ${outputfile}
-        for tif in $(cat "${tifList}"); do
-            if [[ $tif != *LC*_B1[0,1]* ]]; then
-                ciop-log "INFO" "Performing radiometric calibration for $tif"
-                cd $( dirname ${tif})
-                metadatafile=$(ls ${prodname}/*_MTL.txt)
-                outputfile="${tif%.TIF}_toa.tif"
-                rio toa reflectance ${tif} ${metadatafile} ${outputfile} &> /dev/null
-                returnCode=$?
-                [ $returnCode -eq 0 ] || return ${ERR_CALIB}
-                rm $tif
-                mv $outputfile $tif
-            fi
-            cd -
-        done
+#        for tif in $(cat "${tifList}"); do
+#            if [[ $tif != *LC*_B1[0,1]* ]]; then
+#                ciop-log "INFO" "Performing radiometric calibration for $tif"
+#                cd $( dirname ${tif})
+#                metadatafile=$(ls ${prodname}/*_MTL.txt)
+#                outputfile="${tif%.TIF}_toa.tif"
+#                rio toa reflectance ${tif} ${metadatafile} ${outputfile} &> /dev/null
+#                returnCode=$?
+#                [ $returnCode -eq 0 ] || return ${ERR_CALIB}
+#                rm $tif
+#                mv $outputfile $tif
+#            fi
+#            cd -
+#        done
     fi
 elif [ ${mission} = "Kompsat-2" ]; then
     ext=".tif"
@@ -1984,6 +1994,8 @@ else
 fi
 
 for tif in $(cat "${tifList}"); do
+    #unpack geotiff if needed
+    unpack_geotiff $tif
     basenameNoExt=$(basename "$tif")
     basenameNoExt="${basenameNoExt%.*}"
     if [ $index -eq 0  ] ; then
@@ -2176,7 +2188,6 @@ function create_snap_request_stack(){
 
 }
 
-
 # function for renaming all the bands
 function create_snap_request_rename_all_bands(){
 # function call create_snap_request_rename_all_bands "${inputProdDIM}" "${currentBandsListTXT}" "${targetBandsNamesListTXT}" "${outProdRename}"
@@ -2324,7 +2335,6 @@ return 0
 
 }
 
-
 function create_snap_request_rsmpl_rprj_sbs() {
 
 # function call create_snap_request_rsmpl_rprj_sbs "${prodname}" "${performResample}" "${target_spacing}" "${performCropping}" "${subsettingBoxWKT}" "${sourceBandsList}" "${outProd}"
@@ -2397,7 +2407,6 @@ sed -e "s|%%prodname%%|${prodname}|g" \
         return 0
     } || return ${SNAP_REQUEST_ERROR}
 }
-
 
 function main() {
 
