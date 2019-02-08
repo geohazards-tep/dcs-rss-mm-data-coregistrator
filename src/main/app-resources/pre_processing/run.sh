@@ -12,8 +12,8 @@ source $_CIOP_APPLICATION_PATH/otb/otb_include.sh
 source $_CIOP_APPLICATION_PATH/gpt/snap_include.sh
 
 ## put /opt/anaconda/bin ahead to the PATH list to ensure gdal to point to the anaconda installation dir
-export PATH=/opt/anaconda/bin:${PATH}
-#export PATH=/home/rssuser/.conda/envs/csw/bin:${PATH}
+#export PATH=/opt/anaconda/bin:${PATH}
+export PATH=/home/rssuser/.conda/envs/csw/bin:${PATH}
 
 # define the exit codes
 SUCCESS=0
@@ -35,8 +35,9 @@ ERR_UNPACKING=15
 ERR_BAND_LIST=16
 ERR_AOI=17
 ERR_GDAL=18
-ERR_OTB=19
+ERR_CALIB=19
 ERR_CONVERT=20
+ERR_GETTILENUM=21
 
 
 # add a trap to exit gracefully
@@ -65,8 +66,9 @@ function cleanExit ()
 	    ${ERR_BAND_LIST})   	  msg="Error while retrieving the list of contained bands within product";;
 	    ${ERR_AOI})               msg="Error: input SubsetBoundingBox has no intersection with input data";;
 	    ${ERR_GDAL})              msg="Gdal_translate failed to process";;
-	    ${ERR_OTB})          	  msg="Orfeo Toolbox failed to process";;
+	    ${ERR_CALIB})          	  msg="Error during calibration procedure";;
 	    ${ERR_CONVERT})           msg="Convert failed to process";;
+	    ${ERR_GETTILENUM})         msg="Error while retrieving the number of tiles of an image";;
         *)                        msg="Unknown error";;
     esac
 
@@ -280,7 +282,7 @@ function mission_prod_retrieval(){
         [ "${prod_basename_substr_3}" = "S2A" ] && mission="Sentinel-2"
         [ "${prod_basename_substr_3}" = "S2B" ] && mission="Sentinel-2"
 #        [ "${prod_basename_substr_3}" = "K5_" ] && mission="Kompsat-5"
-#        [ "${prod_basename_substr_3}" = "GF2" ] && mission="GF2"
+        [ "${prod_basename_substr_3}" = "GF2" ] && mission="GF2"
         [ "${prod_basename_substr_3}" = "K3_" ] && mission="Kompsat-3"
         [ "${prod_basename_substr_3}" = "LC8" ] && mission="Landsat-8"
         [ "${prod_basename_substr_4}" = "LS08" ] && mission="Landsat-8"
@@ -290,9 +292,9 @@ function mission_prod_retrieval(){
         [ "${prod_basename_substr_5}" = "ORTHO" ] && mission="UK-DMC2"
 #        [ "${prod_basename}" = "Resurs-P" ] && mission="Resurs-P"
 #        [ "${prod_basename_substr_4}" = "RS2_" ] && mission="Radarsat-2"
-#        if [[ "${prod_basename_substr_9}" == "KANOPUS_V" ]] || [[ "${prod_basename_substr_9}" == "KANOPUS-V" ]] || [[ "${prod_basename_substr_9}" == "Kanopus-V" ]] || [[ "${prod_basename_substr_9}" == "Kanopus_V" ]] ; then
-#            mission="Kanopus-V"
-#        fi
+        if [[ "${prod_basename_substr_9}" == "KANOPUS_V" ]] || [[ "${prod_basename_substr_9}" == "KANOPUS-V" ]] || [[ "${prod_basename_substr_9}" == "Kanopus-V" ]] || [[ "${prod_basename_substr_9}" == "Kanopus_V" ]] ; then
+            mission="Kanopus-V"
+        fi
 #        alos2_test=$(echo "${prod_basename}" | grep "ALOS2")
 #        [ "${alos2_test}" = "" ] || mission="Alos-2"
         spot6_test=$(echo "${prod_basename}" | grep "SPOT6")
@@ -306,12 +308,12 @@ function mission_prod_retrieval(){
         [ "${pleiades_test}" = "" ] || mission="PLEIADES"
         [[ -z "${rapideye_test}" ]] && rapideye_test=$(ls "${retrievedProduct}" | grep "RE2")
         [ "${rapideye_test}" = "" ] || mission="RapidEye"
-#        vrss1_test_1=$(echo "${prod_basename}" | grep "VRSS1")
-#        vrss1_test_2=$(echo "${prod_basename}" | grep "VRSS-1")
-#        vrss1_test_3=$(ls "${retrievedProduct}" | grep "VRSS")
-#        if [[ "${vrss1_test_1}" != "" ]] || [[ "${vrss1_test_2}" != "" ]] || [[ "${vrss1_test_3}" != "" ]]; then
-#            mission="VRSS1"
-#        fi
+        vrss1_test_1=$(echo "${prod_basename}" | grep "VRSS1")
+        vrss1_test_2=$(echo "${prod_basename}" | grep "VRSS-1")
+        vrss1_test_3=$(ls "${retrievedProduct}" | grep "VRSS")
+        if [[ "${vrss1_test_1}" != "" ]] || [[ "${vrss1_test_2}" != "" ]] || [[ "${vrss1_test_3}" != "" ]]; then
+            mission="VRSS1"
+        fi
 
         if [ "${mission}" != "" ] ; then
             echo ${mission}
@@ -435,7 +437,6 @@ case "$mission" in
 esac
 
 return 0
-
 }
 
 
@@ -492,7 +493,7 @@ case "$mission" in
             ;;
 
 	    "Landsat-8")
-	         pre_processing_generic_optical "${prodname}" "${mission}" "${pixelSpacing}" "${pixelSpacingMaster}" "${performCropping}" "${subsettingBoxWKT}" "${performOpticalCalibration}"
+	        pre_processing_generic_optical "${prodname}" "${mission}" "${pixelSpacing}" "${pixelSpacingMaster}" "${performCropping}" "${subsettingBoxWKT}" "${performOpticalCalibration}"
             return $?
             ;;
 
@@ -550,7 +551,6 @@ case "$mission" in
 	    return "${ERR_CALLPREPROCESS}"
 	    ;;
 esac
-
 }
 
 
@@ -638,8 +638,6 @@ elif (( $(bc <<< "$pixelSpacing < $pixelSpacingMaster") )) ; then
 fi
 
 echo $ml_factor
-
-
 }
 
 # function to calibrate optical image files
@@ -662,9 +660,22 @@ if [[ ! -z "$gainbiasfile" ]] && [[ ! -z "$solarilluminationsfile" ]]  ; then
 else
     otb_op=$( otbcli_OpticalCalibration -in ${currentProd} -out ${outputfile} -level toa -ram ${RAM_AVAILABLE})
 fi
-#returnCode=$?
-#[ $returnCode -eq 0 ] || return ${ERR_OTB}
-echo ${outputfile}
+[ -f ${outputfile} ] && echo ${outputfile} || return $ERR_CALIB
+}
+
+function unpack_geotiff() {
+# function to unpack compressed geotiff files
+
+local geotiffProd=$1
+local outputfile=${TMPDIR}/$(basename ${geotiffProd})
+
+check_packed=$(gdalinfo $geotiffProd | grep COMPRESSION=LZW)
+if [ $check_packed == "COMPRESSION=LZW" ]; then
+    ciop-log "INFO" "Unpacking GeoTiff file"
+    gdal_translate ${geotiffProd} ${outputfile} -of GTiff
+    [ $? -eq 0 ] || return $ERR_GDAL
+    mv ${outputfile} ${geotiffProd}
+fi
 }
 
 # function that compares the pixel spacing and returns the greter one
@@ -689,15 +700,13 @@ elif (( $(bc <<< "$pixelSpacing < $pixelSpacingMaster") )) ; then
 fi
 
 echo $out_spacing
-
 }
-
 
 function get_num_tiles() {
 local prodname=$1
 spot_xml=$(find ${prodname}/ -name 'DIM_*MS_*.XML')
 numTiles=$(sed -n -e 's|^.*<NTILES>\(.*\)</NTILES>$|\1|p' ${spot_xml})
-echo ${numTiles}
+[ -z "$numTiles" ] && return $ERR_GETTILENUM || echo ${numTiles}
 }
 
 # Sentinel-1 pre processing function
@@ -751,9 +760,7 @@ tar -cf ${outProdBasename}.tar ${outProdBasename}.d*
 mv ${outProdBasename}.tar ${OUTPUTDIR}
 rm -rf ${outProdBasename}.d*
 cd -
-
 }
-
 
 function create_snap_request_pre_processing_s1() {
 
@@ -803,160 +810,20 @@ fi
 #sets the output filename
 snap_request_filename="${TMPDIR}/$( uuidgen ).xml"
 
-   cat << EOF > ${snap_request_filename}
-<graph id="Graph">
-<version>1.0</version>
-  <node id="Read">
-    <operator>Read</operator>
-    <sources/>
-    <parameters class="com.bc.ceres.binding.dom.XppDomElement">
-      <file>${prodname}</file>
-      <formatName>SENTINEL-1</formatName>
-    </parameters>
-  </node>
-  <node id="Calibration">
-    <operator>Calibration</operator>
-    <sources>
-      <sourceProduct refid="Apply-Orbit-File"/>
-    </sources>
-    <parameters class="com.bc.ceres.binding.dom.XppDomElement">
-      <sourceBands/>
-      <auxFile>Product Auxiliary File</auxFile>
-      <externalAuxFile/>
-      <outputImageInComplex>false</outputImageInComplex>
-      <outputImageScaleInDb>false</outputImageScaleInDb>
-      <createGammaBand>false</createGammaBand>
-      <createBetaBand>false</createBetaBand>
-      <selectedPolarisations/>
-      <outputSigmaBand>true</outputSigmaBand>
-      <outputGammaBand>false</outputGammaBand>
-      <outputBetaBand>false</outputBetaBand>
-    </parameters>
-  </node>
-${commentMlBegin}  <node id="Multilook">
-    <operator>Multilook</operator>
-    <sources>
-      <sourceProduct refid="Calibration"/>
-    </sources>
-    <parameters class="com.bc.ceres.binding.dom.XppDomElement">
-      <sourceBands/>
-      <nRgLooks>${ml_factor}</nRgLooks>
-      <nAzLooks>${ml_factor}</nAzLooks>
-      <outputIntensity>true</outputIntensity>
-      <grSquarePixel>true</grSquarePixel>
-    </parameters>
-  </node> ${commentMlEnd}
-  <node id="Terrain-Correction">
-    <operator>Terrain-Correction</operator>
-    <sources>
-      ${commentMlBegin} <sourceProduct refid="Multilook"/> ${commentMlEnd}
-      ${commentCalSrcBegin} <sourceProduct refid="Calibration"/> ${commentCalSrcEnd}
-    </sources>
-    <parameters class="com.bc.ceres.binding.dom.XppDomElement">
-      <sourceBands/>
-      <demName>SRTM 3Sec</demName>
-      <externalDEMFile/>
-      <externalDEMNoDataValue>0.0</externalDEMNoDataValue>
-      <externalDEMApplyEGM>true</externalDEMApplyEGM>
-      <demResamplingMethod>BILINEAR_INTERPOLATION</demResamplingMethod>
-      <imgResamplingMethod>BILINEAR_INTERPOLATION</imgResamplingMethod>
-      <pixelSpacingInMeter>10.0</pixelSpacingInMeter>
-      <pixelSpacingInDegree>8.983152841195215E-5</pixelSpacingInDegree>
-      <mapProjection>WGS84(DD)</mapProjection>
-      <nodataValueAtSea>true</nodataValueAtSea>
-      <saveDEM>false</saveDEM>
-      <saveLatLon>false</saveLatLon>
-      <saveIncidenceAngleFromEllipsoid>false</saveIncidenceAngleFromEllipsoid>
-      <saveLocalIncidenceAngle>false</saveLocalIncidenceAngle>
-      <saveProjectedLocalIncidenceAngle>false</saveProjectedLocalIncidenceAngle>
-      <saveSelectedSourceBand>true</saveSelectedSourceBand>
-      <outputComplex>false</outputComplex>
-      <applyRadiometricNormalization>false</applyRadiometricNormalization>
-      <saveSigmaNought>false</saveSigmaNought>
-      <saveGammaNought>false</saveGammaNought>
-      <saveBetaNought>false</saveBetaNought>
-      <incidenceAngleForSigma0>Use projected local incidence angle from DEM</incidenceAngleForSigma0>
-      <incidenceAngleForGamma0>Use projected local incidence angle from DEM</incidenceAngleForGamma0>
-      <auxFile>Latest Auxiliary File</auxFile>
-      <externalAuxFile/>
-    </parameters>
-  </node>
-  <node id="LinearToFromdB">
-    <operator>LinearToFromdB</operator>
-    <sources>
-      <sourceProduct refid="Terrain-Correction"/>
-    </sources>
-    <parameters class="com.bc.ceres.binding.dom.XppDomElement">
-      <sourceBands/>
-    </parameters>
-  </node>
-  <node id="Apply-Orbit-File">
-    <operator>Apply-Orbit-File</operator>
-    <sources>
-      <sourceProduct refid="Read"/>
-    </sources>
-    <parameters class="com.bc.ceres.binding.dom.XppDomElement">
-      <orbitType>Sentinel Precise (Auto Download)</orbitType>
-      <polyDegree>3</polyDegree>
-      <continueOnFail>true</continueOnFail>
-    </parameters>
-  </node>
-${commentSbsBegin}  <node id="Subset">
-    <operator>Subset</operator>
-    <sources>
-      <sourceProduct refid="LinearToFromdB"/>
-    </sources>
-    <parameters class="com.bc.ceres.binding.dom.XppDomElement">
-      <sourceBands/>
-      <region/>
-      <geoRegion>${subsettingBoxWKT}</geoRegion>
-      <subSamplingX>1</subSamplingX>
-      <subSamplingY>1</subSamplingY>
-      <fullSwath>false</fullSwath>
-      <tiePointGridNames/>
-      <copyMetadata>true</copyMetadata>
-    </parameters>
-  </node>  ${commentSbsEnd}
-  <node id="Write">
-    <operator>Write</operator>
-    <sources>
-      ${commentSbsBegin} <sourceProduct refid="Subset"/> ${commentSbsEnd}
-      ${commentDbSrcBegin} <sourceProduct refid="LinearToFromdB"/> ${commentDbSrcEnd}
-    </sources>
-    <parameters class="com.bc.ceres.binding.dom.XppDomElement">
-      <file>${outprod}.dim</file>
-      <formatName>BEAM-DIMAP</formatName>
-    </parameters>
-  </node>
-  <applicationData id="Presentation">
-    <Description/>
-    <node id="Read">
-            <displayPosition x="9.0" y="128.0"/>
-    </node>
-    <node id="Calibration">
-      <displayPosition x="200.0" y="129.0"/>
-    </node>
-    <node id="Multilook">
-	  <displayPosition x="291.0" y="129.0"/>
-    </node>
-    <node id="Terrain-Correction">
-      <displayPosition x="480.0" y="129.0"/>
-    </node>
-    <node id="LinearToFromdB">
-      <displayPosition x="623.0" y="129.0"/>
-    </node>
-    <node id="Apply-Orbit-File">
-      <displayPosition x="88.0" y="129.0"/>
-    </node>
-    <node id="Subset">
-      <displayPosition x="751.0" y="127.0"/>
-    </node>
-    <node id="Write">
-		<displayPosition x="850.0" y="129.0"/>
-    </node>
-  </applicationData>
-</graph>
-EOF
+SNAP_gpt_template="$_CIOP_APPLICATION_PATH/pre_processing/templates/snap_request_s1.xml"
+
+sed -e "s|%%prodname%%|${prodname}|g" \
+-e "s|%%commentMlBegin%%|${commentMlBegin}|g" \
+-e "s|%%ml_factor%%|${ml_factor}|g" \
+-e "s|%%commentMlEnd%%|${commentMlEnd}|g" \
+-e "s|%%commentCalSrcBegin%%|${commentCalSrcBegin}|g" \
+-e "s|%%commentCalSrcEnd%%|${commentCalSrcEnd}|g" \
+-e "s|%%commentSbsBegin%%|${commentSbsBegin}|g" \
+-e "s|%%subsettingBoxWKT%%|${subsettingBoxWKT}|g" \
+-e "s|%%commentSbsEnd%%|${commentSbsEnd}|g" \
+-e "s|%%commentDbSrcBegin%%|${commentDbSrcBegin}|g" \
+-e "s|%%outprod%%|${outprod}|g" \
+-e "s|%%commentDbSrcEnd%%|${commentDbSrcEnd}|g"  $SNAP_gpt_template > $snap_request_filename
 
     [ $? -eq 0 ] && {
         echo "${snap_request_filename}"
@@ -1013,9 +880,7 @@ tar -cf ${outProdBasename}.tar ${outProdBasename}.d*
 mv ${outProdBasename}.tar ${OUTPUTDIR}
 rm -rf ${outProdBasename}.d*
 cd -
-
 }
-
 
 function create_snap_request_pre_processing_rs2() {
 
@@ -1067,148 +932,21 @@ pixelSpacing=$(echo "scale=1; $srcPixelSpacing*$ml_factor" | bc )
 #sets the output filename
 snap_request_filename="${TMPDIR}/$( uuidgen ).xml"
 
-   cat << EOF > ${snap_request_filename}
-<graph id="Graph">
-  <version>1.0</version>
-  <node id="Read">
-    <operator>Read</operator>
-    <sources/>
-    <parameters class="com.bc.ceres.binding.dom.XppDomElement">
-      <file>${prodname}</file>
-    </parameters>
-  </node>
-  <node id="Calibration">
-    <operator>Calibration</operator>
-    <sources>
-      <sourceProduct refid="Read"/>
-    </sources>
-    <parameters class="com.bc.ceres.binding.dom.XppDomElement">
-      <sourceBands/>
-      <auxFile>Product Auxiliary File</auxFile>
-      <externalAuxFile/>
-      <outputImageInComplex>false</outputImageInComplex>
-      <outputImageScaleInDb>false</outputImageScaleInDb>
-      <createGammaBand>false</createGammaBand>
-      <createBetaBand>false</createBetaBand>
-      <selectedPolarisations/>
-      <outputSigmaBand>true</outputSigmaBand>
-      <outputGammaBand>false</outputGammaBand>
-      <outputBetaBand>false</outputBetaBand>
-    </parameters>
-  </node>
-${commentMlBegin}  <node id="Multilook">
-    <operator>Multilook</operator>
-    <sources>
-      <sourceProduct refid="Calibration"/>
-    </sources>
-    <parameters class="com.bc.ceres.binding.dom.XppDomElement">
-      <sourceBands/>
-      <nRgLooks>${ml_factor}</nRgLooks>
-      <nAzLooks>${ml_factor}</nAzLooks>
-      <outputIntensity>true</outputIntensity>
-      <grSquarePixel>true</grSquarePixel>
-    </parameters>
-  </node> ${commentMlEnd}
-  <node id="Terrain-Correction">
-    <operator>Terrain-Correction</operator>
-    <sources>
-${commentMlBegin}  <sourceProduct refid="Multilook"/> ${commentMlEnd}
-${commentCalSrcBegin}  <sourceProduct refid="Calibration"/> ${commentCalSrcEnd}
-    </sources>
-    <parameters class="com.bc.ceres.binding.dom.XppDomElement">
-      <sourceBands/>
-      <demName>SRTM 3Sec</demName>
-      <externalDEMFile/>
-      <externalDEMNoDataValue>0.0</externalDEMNoDataValue>
-      <externalDEMApplyEGM>true</externalDEMApplyEGM>
-      <demResamplingMethod>BILINEAR_INTERPOLATION</demResamplingMethod>
-      <imgResamplingMethod>BILINEAR_INTERPOLATION</imgResamplingMethod>
-      <pixelSpacingInMeter>${pixelSpacing}</pixelSpacingInMeter>
-      <!-- <pixelSpacingInDegree>2.2457882102988038E-4</pixelSpacingInDegree> -->
-      <mapProjection>GEOGCS[&quot;WGS84(DD)&quot;, &#xd;
-  DATUM[&quot;WGS84&quot;, &#xd;
-    SPHEROID[&quot;WGS84&quot;, 6378137.0, 298.257223563]], &#xd;
-  PRIMEM[&quot;Greenwich&quot;, 0.0], &#xd;
-  UNIT[&quot;degree&quot;, 0.017453292519943295], &#xd;
-  AXIS[&quot;Geodetic longitude&quot;, EAST], &#xd;
-  AXIS[&quot;Geodetic latitude&quot;, NORTH]]</mapProjection>
-      <nodataValueAtSea>false</nodataValueAtSea>
-      <saveDEM>false</saveDEM>
-      <saveLatLon>false</saveLatLon>
-      <saveIncidenceAngleFromEllipsoid>false</saveIncidenceAngleFromEllipsoid>
-      <saveLocalIncidenceAngle>false</saveLocalIncidenceAngle>
-      <saveProjectedLocalIncidenceAngle>false</saveProjectedLocalIncidenceAngle>
-      <saveSelectedSourceBand>true</saveSelectedSourceBand>
-      <outputComplex>false</outputComplex>
-      <applyRadiometricNormalization>false</applyRadiometricNormalization>
-      <saveSigmaNought>false</saveSigmaNought>
-      <saveGammaNought>false</saveGammaNought>
-      <saveBetaNought>false</saveBetaNought>
-      <incidenceAngleForSigma0>Use projected local incidence angle from DEM</incidenceAngleForSigma0>
-      <incidenceAngleForGamma0>Use projected local incidence angle from DEM</incidenceAngleForGamma0>
-      <auxFile>Latest Auxiliary File</auxFile>
-      <externalAuxFile/>
-    </parameters>
-  </node>
-  <node id="LinearToFromdB">
-    <operator>LinearToFromdB</operator>
-    <sources>
-      <sourceProduct refid="Terrain-Correction"/>
-    </sources>
-    <parameters class="com.bc.ceres.binding.dom.XppDomElement">
-      <sourceBands/>
-    </parameters>
-  </node>
-${commentSbsBegin}  <node id="Subset">
-    <operator>Subset</operator>
-    <sources>
-      <sourceProduct refid="LinearToFromdB"/>
-    </sources>
-    <parameters class="com.bc.ceres.binding.dom.XppDomElement">
-      <sourceBands/>
-      <region/>
-      <geoRegion>${subsettingBoxWKT}</geoRegion>
-      <subSamplingX>1</subSamplingX>
-      <subSamplingY>1</subSamplingY>
-      <fullSwath>false</fullSwath>
-      <tiePointGridNames/>
-      <copyMetadata>true</copyMetadata>
-    </parameters>
-  </node>  ${commentSbsEnd}
-  <node id="Write">
-    <operator>Write</operator>
-    <sources>
-      ${commentSbsBegin} <sourceProduct refid="Subset"/> ${commentSbsEnd}
-      ${commentDbSrcBegin} <sourceProduct refid="LinearToFromdB"/> ${commentDbSrcEnd}
-    </sources>
-    <parameters class="com.bc.ceres.binding.dom.XppDomElement">
-      <file>${outprod}.dim</file>
-      <formatName>BEAM-DIMAP</formatName>
-    </parameters>
-  </node>
-  <applicationData id="Presentation">
-    <Description/>
-    <node id="Read">
-            <displayPosition x="37.0" y="134.0"/>
-    </node>
-    <node id="Calibration">
-      <displayPosition x="118.0" y="135.0"/>
-    </node>
-    <node id="Multilook">
-      <displayPosition x="211.0" y="135.0"/>
-    </node>
-    <node id="Terrain-Correction">
-      <displayPosition x="300.0" y="135.0"/>
-    </node>
-    <node id="LinearToFromdB">
-      <displayPosition x="454.0" y="134.0"/>
-    </node>
-    <node id="Write">
-            <displayPosition x="628.0" y="137.0"/>
-    </node>
-  </applicationData>
-</graph>
-EOF
+SNAP_gpt_template="$_CIOP_APPLICATION_PATH/pre_processing/templates/snap_request_rs2.xml"
+
+sed -e "s|%%prodname%%|${prodname}|g" \
+-e "s|%%commentMlBegin%%|${commentMlBegin}|g" \
+-e "s|%%ml_factor%%|${ml_factor}|g" \
+-e "s|%%commentMlEnd%%|${commentMlEnd}|g" \
+-e "s|%%commentCalSrcBegin%%|${commentCalSrcBegin}|g" \
+-e "s|%%commentCalSrcEnd%%|${commentCalSrcEnd}|g" \
+-e "s|%%commentSbsBegin%%|${commentSbsBegin}|g" \
+-e "s|%%subsettingBoxWKT%%|${subsettingBoxWKT}|g" \
+-e "s|%%pixelSpacing%%|${pixelSpacing}|g" \
+-e "s|%%commentSbsEnd%%|${commentSbsEnd}|g" \
+-e "s|%%commentDbSrcBegin%%|${commentDbSrcBegin}|g" \
+-e "s|%%outprod%%|${outprod}|g" \
+-e "s|%%commentDbSrcEnd%%|${commentDbSrcEnd}|g"  $SNAP_gpt_template > $snap_request_filename
 
     [ $? -eq 0 ] && {
         echo "${snap_request_filename}"
@@ -1365,7 +1103,6 @@ tar -cf ${outProdBasename}.tar ${outProdBasename}.d*
 mv ${outProdBasename}.tar ${OUTPUTDIR}
 rm -rf ${outProdBasename}.d*
 cd -
-
 }
 
 # Pre processing function for Kompsat-5
@@ -1500,9 +1237,7 @@ tar -cf ${outProdBasename}.tar ${outProdBasename}.d*
 mv ${outProdBasename}.tar ${OUTPUTDIR}
 rm -rf ${outProdBasename}.d*
 cd -
-
 }
-
 
 # UKDMC2 pre processing function
 function pre_processing_ukdmc2() {
@@ -1586,7 +1321,6 @@ tar -cf ${outProdBasename}.tar ${outProdBasename}.d*
 mv ${outProdBasename}.tar ${OUTPUTDIR}
 rm -rf ${outProdBasename}.d*
 cd -
-
 }
 
 # RapidEye pre processing function
@@ -1744,7 +1478,6 @@ mv ${outProdBasename}.tar ${OUTPUTDIR}
 rm -rf ${outProdBasename}.d*
 rm -rf ${outProdRename}.d*
 cd
-
 }
 
 # Kanopus pre processing function
@@ -1878,9 +1611,7 @@ mv ${outProdBasename}.tar ${OUTPUTDIR}
 rm -rf ${outProdBasename}.d*
 rm -rf ${outProdRename}.d*
 cd
-
 }
-
 
 # generic optical mission (not fully supported by SNAP) pre processing function
 function pre_processing_spot_pleiades() {
@@ -2042,7 +1773,6 @@ mv ${outProdBasename}.tar ${OUTPUTDIR}
 rm -rf ${outProdBasename}.d*
 rm -rf ${outProdRename}.d*
 cd
-
 }
 
 # generic optical mission (not fully supported by SNAP) pre processing function
@@ -2093,20 +1823,14 @@ if [ ${mission} = "Landsat-8" ]; then
     else
         ls "${prodname}"/LS08*_B[0-1][0-7,9]${ext} > $tifList
     fi
+    cd -
     if [[ "${performOpticalCalibration}" = true ]]; then
-        ciop-log "INFO" "Calibration for Landsat8 not yet available"
-#        for tif in $(cat "${tifList}"); do
-#            if [[ $tif != *LC*_B1[0,1]* ]]; then
-#                ciop-log "INFO" "Performing radiometric calibration for $tif"
-#                cd $( dirname ${tif})
-#                metadatafile=$(ls ${prodname}/*_MTL.txt)
-#                outputfile="${tif%.TIF}_toa.tif"
-#                rio toa reflectance ${tif} ${metadatafile} ${outputfile}
-#                rm $tif
-#                mv $outputfile $tif
-#            fi
-#            cd -
-#        done
+        ciop-log "INFO" "Performing Optical Calibration for Landsat8..."
+        L8_reflectance ${prodname} $( dirname ${prodname})
+        ls "${prodname}_TOA"/LC*_B[1-7]_TOA${ext} > $tifList
+#        ls "${prodname}"/LC*_B[8-9]${ext} >> $tifList
+#        ls "${prodname}"/LC*_B1[0,1]${ext} >> $tifList
+
     fi
 elif [ ${mission} = "Kompsat-2" ]; then
     ext=".tif"
@@ -2258,6 +1982,8 @@ else
 fi
 
 for tif in $(cat "${tifList}"); do
+    #unpack geotiff if needed
+    unpack_geotiff $tif
     basenameNoExt=$(basename "$tif")
     basenameNoExt="${basenameNoExt%.*}"
     if [ $index -eq 0  ] ; then
@@ -2297,7 +2023,7 @@ else
     # report activity in the log
     ciop-log "INFO" "Invoking SNAP-gpt request file for products stacking"
     # invoke the ESA SNAP toolbox
-    gpt $SNAP_REQUEST -c "${CACHE_SIZE}" &> /dev/null
+    gpt $SNAP_REQUEST -c "${CACHE_SIZE}"    &> /dev/null
     # check the exit code
     [ $? -eq 0 ] || return $ERR_SNAP
 fi
@@ -2404,63 +2130,13 @@ else
     return ${SNAP_REQUEST_ERROR}
 fi
 
-
 #sets the output filename
 snap_request_filename="${TMPDIR}/$( uuidgen ).xml"
+SNAP_gpt_template="$_CIOP_APPLICATION_PATH/pre_processing/templates/snap_request_linear_to_dB.xml"
 
-cat << EOF > ${snap_request_filename}
-<graph id="Graph">
-  <version>1.0</version>
-  <node id="Read">
-    <operator>Read</operator>
-    <sources/>
-    <parameters class="com.bc.ceres.binding.dom.XppDomElement">
-      <file>${inputfile}</file>
-    </parameters>
-  </node>
-  <node id="BandMaths">
-    <operator>BandMaths</operator>
-    <sources>
-      <sourceProduct refid="Read"/>
-    </sources>
-    <parameters class="com.bc.ceres.binding.dom.XppDomElement">
-      <targetBands>
-        <targetBand>
-          <name>band_1</name>
-          <type>uint8</type>
-          <expression>if fneq(band_1,0) then max(20*log10(band_1),1) else 0</expression>
-          <description/>
-          <unit/>
-          <noDataValue>0.0</noDataValue>
-        </targetBand>
-      </targetBands>
-      <variables/>
-    </parameters>
-  </node>
-  <node id="Write">
-    <operator>Write</operator>
-    <sources>
-      <sourceProduct refid="BandMaths"/>
-    </sources>
-    <parameters class="com.bc.ceres.binding.dom.XppDomElement">
-      <file>${outputfile}</file>
-      <formatName>${format}</formatName>
-    </parameters>
-  </node>
-  <applicationData id="Presentation">
-    <Description/>
-    <node id="Read">
-            <displayPosition x="37.0" y="134.0"/>
-    </node>
-    <node id="BandMaths">
-      <displayPosition x="247.0" y="132.0"/>
-    </node>
-    <node id="Write">
-            <displayPosition x="455.0" y="135.0"/>
-    </node>
-  </applicationData>
-</graph>
-EOF
+sed -e "s|%%inputfile%%|${inputfile}|g" \
+-e "s|%%outputfile%%|${outputfile}|g" \
+-e "s|%%format%%|${format}|g"  $SNAP_gpt_template > $snap_request_filename
 
     [ $? -eq 0 ] && {
         echo "${snap_request_filename}"
@@ -2488,62 +2164,17 @@ function create_snap_request_stack(){
 
     #sets the output filename
     snap_request_filename="${TMPDIR}/$( uuidgen ).xml"
+    SNAP_gpt_template="$_CIOP_APPLICATION_PATH/pre_processing/templates/snap_request_stack.xml"
 
-   cat << EOF > ${snap_request_filename}
-<graph id="Graph">
-  <version>1.0</version>
-  <node id="ProductSet-Reader">
-    <operator>ProductSet-Reader</operator>
-    <sources/>
-    <parameters class="com.bc.ceres.binding.dom.XppDomElement">
-      <fileList>${inputfiles_list}</fileList>
-    </parameters>
-  </node>
-<node id="CreateStack">
-    <operator>CreateStack</operator>
-    <sources>
-      <sourceProduct.$numProd refid="ProductSet-Reader"/>
-    </sources>
-    <parameters class="com.bc.ceres.binding.dom.XppDomElement">
-      <masterBands/>
-      <sourceBands/>
-      <resamplingType>NONE</resamplingType>
-      <extent>Master</extent>
-      <initialOffsetMethod>Product Geolocation</initialOffsetMethod>
-    </parameters>
-  </node>
-  <node id="Write">
-    <operator>Write</operator>
-    <sources>
-      <sourceProduct refid="CreateStack"/>
-    </sources>
-    <parameters class="com.bc.ceres.binding.dom.XppDomElement">
-      <file>${outProdDIM}.dim</file>
-      <formatName>BEAM-DIMAP</formatName>
-    </parameters>
-  </node>
-  <applicationData id="Presentation">
-    <Description/>
-    <node id="Write">
-            <displayPosition x="455.0" y="135.0"/>
-    </node>
-    <node id="CreateStack">
-      <displayPosition x="240.0" y="132.0"/>
-    </node>
-    <node id="ProductSet-Reader">
-      <displayPosition x="39.0" y="131.0"/>
-    </node>
-  </applicationData>
-</graph>
-EOF
-
+    sed -e "s|%%inputfiles_list%%|${inputfiles_list}|g" \
+    -e "s|%%numProd%%|${numProd}|g" \
+    -e "s|%%outProdDIM%%|${outProdDIM}|g"  $SNAP_gpt_template > $snap_request_filename
     [ $? -eq 0 ] && {
         echo "${snap_request_filename}"
         return 0
     } || return ${SNAP_REQUEST_ERROR}
 
 }
-
 
 # function for renaming all the bands
 function create_snap_request_rename_all_bands(){
@@ -2692,7 +2323,6 @@ return 0
 
 }
 
-
 function create_snap_request_rsmpl_rprj_sbs() {
 
 # function call create_snap_request_rsmpl_rprj_sbs "${prodname}" "${performResample}" "${target_spacing}" "${performCropping}" "${subsettingBoxWKT}" "${sourceBandsList}" "${outProd}"
@@ -2744,135 +2374,27 @@ fi
 
 #sets the output filename
 snap_request_filename="${TMPDIR}/$( uuidgen ).xml"
+SNAP_gpt_template="$_CIOP_APPLICATION_PATH/pre_processing/templates/snap_request_rsmpl_rprj_sbs.xml"
 
-   cat << EOF > ${snap_request_filename}
-<graph id="Graph">
-  <version>1.0</version>
-  <node id="Read">
-    <operator>Read</operator>
-    <sources/>
-    <parameters class="com.bc.ceres.binding.dom.XppDomElement">
-      <file>${prodname}</file>
-    </parameters>
-  </node>
-${commentRsmpBegin}  <node id="Resample">
-    <operator>Resample</operator>
-    <sources>
-      <sourceProduct refid="Read"/>
-    </sources>
-    <parameters class="com.bc.ceres.binding.dom.XppDomElement">
-      <referenceBand/>
-      <targetWidth/>
-      <targetHeight/>
-      <targetResolution>${target_spacing}</targetResolution>
-      <upsampling>Nearest</upsampling>
-      <downsampling>First</downsampling>
-      <flagDownsampling>First</flagDownsampling>
-      <resampleOnPyramidLevels>false</resampleOnPyramidLevels>
-    </parameters>
-  </node> ${commentRsmpEnd}
-  <node id="Reproject">
-    <operator>Reproject</operator>
-    <sources>
-${commentRsmpBegin}      <sourceProduct refid="Resample"/> ${commentRsmpEnd}
-${commentReadSrcBegin}   <sourceProduct refid="Read"/> ${commentReadSrcEnd}
-    </sources>
-    <parameters class="com.bc.ceres.binding.dom.XppDomElement">
-      <wktFile/>
-      <crs>GEOGCS[&quot;WGS84(DD)&quot;, &#xd;
-  DATUM[&quot;WGS84&quot;, &#xd;
-    SPHEROID[&quot;WGS84&quot;, 6378137.0, 298.257223563]], &#xd;
-  PRIMEM[&quot;Greenwich&quot;, 0.0], &#xd;
-  UNIT[&quot;degree&quot;, 0.017453292519943295], &#xd;
-  AXIS[&quot;Geodetic longitude&quot;, EAST], &#xd;
-  AXIS[&quot;Geodetic latitude&quot;, NORTH]]</crs>
-      <resampling>Nearest</resampling>
-      <referencePixelX/>
-      <referencePixelY/>
-      <easting/>
-      <northing/>
-      <orientation/>
-      <pixelSizeX/>
-      <pixelSizeY/>
-      <width/>
-      <height/>
-      <tileSizeX/>
-      <tileSizeY/>
-      <orthorectify>false</orthorectify>
-      <elevationModelName/>
-      <noDataValue>NaN</noDataValue>
-      <includeTiePointGrids>true</includeTiePointGrids>
-      <addDeltaBands>false</addDeltaBands>
-    </parameters>
-  </node>
-${commentSbsBegin}  <node id="Subset">
-    <operator>Subset</operator>
-    <sources>
-      <sourceProduct refid="Reproject"/>
-    </sources>
-    <parameters class="com.bc.ceres.binding.dom.XppDomElement">
-      <sourceBands/>
-      <region/>
-      <geoRegion>${subsettingBoxWKT}</geoRegion>
-      <subSamplingX>1</subSamplingX>
-      <subSamplingY>1</subSamplingY>
-      <fullSwath>false</fullSwath>
-      <tiePointGridNames/>
-      <copyMetadata>true</copyMetadata>
-    </parameters>
-  </node> ${commentSbsEnd}
-  <node id="BandSelect">
-    <operator>BandSelect</operator>
-    <sources>
-      ${commentSbsBegin} <sourceProduct refid="Subset"/> ${commentSbsEnd}
-      ${commentProjSrcBegin} <sourceProduct refid="Reproject"/> ${commentProjSrcEnd}
-    </sources>
-    <parameters class="com.bc.ceres.binding.dom.XppDomElement">
-      <selectedPolarisations/>
-      <sourceBands>${sourceBandsList}</sourceBands>
-      <bandNamePattern/>
-    </parameters>
-  </node>
-  <node id="Write">
-    <operator>Write</operator>
-    <sources>
-       <sourceProduct refid="BandSelect"/>
-    </sources>
-    <parameters class="com.bc.ceres.binding.dom.XppDomElement">
-      <file>${outprod}.dim</file>
-      <formatName>BEAM-DIMAP</formatName>
-    </parameters>
-  </node>
-  <applicationData id="Presentation">
-    <Description/>
-    <node id="Write">
-            <displayPosition x="455.0" y="135.0"/>
-    </node>
-    <node id="BandSelect">
-      <displayPosition x="400.0" y="136.0"/>
-    </node>
-    <node id="Subset">
-      <displayPosition x="327.0" y="136.0"/>
-    </node>
-    <node id="Reproject">
-      <displayPosition x="231.0" y="137.0"/>
-    </node>
-    <node id="Resample">
-      <displayPosition x="140.0" y="133.0"/>
-    </node>
-    <node id="Read">
-            <displayPosition x="37.0" y="134.0"/>
-    </node>
-  </applicationData>
-</graph>
-EOF
+sed -e "s|%%prodname%%|${prodname}|g" \
+-e "s|%%commentRsmpBegin%%|${commentRsmpBegin}|g" \
+-e "s|%%target_spacing%%|${target_spacing}|g" \
+-e "s|%%commentRsmpEnd%%|${commentRsmpEnd}|g" \
+-e "s|%%commentReadSrcBegin%%|${commentReadSrcBegin}|g" \
+-e "s|%%commentReadSrcEnd%%|${commentReadSrcEnd}|g" \
+-e "s|%%commentSbsBegin%%|${commentSbsBegin}|g" \
+-e "s|%%subsettingBoxWKT%%|${subsettingBoxWKT}|g" \
+-e "s|%%commentSbsEnd%%|${commentSbsEnd}|g" \
+-e "s|%%commentProjSrcBegin%%|${commentProjSrcBegin}|g" \
+-e "s|%%commentProjSrcEnd%%|${commentProjSrcEnd}|g" \
+-e "s|%%sourceBandsList%%|${sourceBandsList}|g" \
+-e "s|%%outprod%%|${outprod}|g"  $SNAP_gpt_template > $snap_request_filename
 
     [ $? -eq 0 ] && {
         echo "${snap_request_filename}"
         return 0
     } || return ${SNAP_REQUEST_ERROR}
 }
-
 
 function main() {
 
@@ -2980,13 +2502,6 @@ function main() {
             return $ERR_NORETRIEVEDPROD
         fi
 
-#        unzippedFolder=$(ls $retrievedProduct)
-#        # log the value, it helps debugging.
-#        # the log entry is available in the process stderr
-#        ciop-log "DEBUG" "unzippedFolder: ${unzippedFolder}"
-#
-#        # retrieved product pointing to the unzipped folder
-#        retrievedProduct=$retrievedProduct/$unzippedFolder
         prodname=$( basename "$retrievedProduct" )
         # report activity in the log
         ciop-log "INFO" "Product correctly retrieved: ${prodname}"
@@ -3033,7 +2548,6 @@ function main() {
 	fi
 
         ### PRE-PROCESSING DEPENDING ON MISSION DATA
-
         # report activity in the log
         ciop-log "INFO" "Running pre-processing for ${prodname}"
         pre_processing "${retrievedProduct}" "${mission}" "${pixelSpacing}" "${pixelSpacingMaster}" "${performCropping}" "${subsettingBoxWKT}" "${performOpticalCalibration}"
@@ -3049,10 +2563,8 @@ function main() {
             mv ${out_prodname} ${out_prodname}.master
 	fi
 	ciop-publish ${OUTPUTDIR}/*.*
-
         #cleanup
         rm -rf ${retrievedProduct} ${OUTPUTDIR}/*.*
-
     done
 
     #cleanup
