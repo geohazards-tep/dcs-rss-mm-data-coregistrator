@@ -1825,24 +1825,12 @@ if [ ${mission} = "Landsat-8" ]; then
     fi
     cd -
     if [[ "${performOpticalCalibration}" = true ]]; then
-        ciop-log "INFO" "Calibration for Landsat8 not yet available"
-#        metadatafile=$(ls ${prodname}/*_MTL.txt)
-#        outputfile=${prodname}_
-#        rio toa reflectance $(cat "${tifList}") ${metadatafile} ${outputfile}
-#        for tif in $(cat "${tifList}"); do
-#            if [[ $tif != *LC*_B1[0,1]* ]]; then
-#                ciop-log "INFO" "Performing radiometric calibration for $tif"
-#                cd $( dirname ${tif})
-#                metadatafile=$(ls ${prodname}/*_MTL.txt)
-#                outputfile="${tif%.TIF}_toa.tif"
-#                rio toa reflectance ${tif} ${metadatafile} ${outputfile} &> /dev/null
-#                returnCode=$?
-#                [ $returnCode -eq 0 ] || return ${ERR_CALIB}
-#                rm $tif
-#                mv $outputfile $tif
-#            fi
-#            cd -
-#        done
+        ciop-log "INFO" "Performing Optical Calibration for Landsat8..."
+        L8_reflectance ${prodname} $( dirname ${prodname})
+        ls "${prodname}_TOA"/LC*_B[1-7]_TOA${ext} > $tifList
+#        ls "${prodname}"/LC*_B[8-9]${ext} >> $tifList
+#        ls "${prodname}"/LC*_B1[0,1]${ext} >> $tifList
+
     fi
 elif [ ${mission} = "Kompsat-2" ]; then
     ext=".tif"
