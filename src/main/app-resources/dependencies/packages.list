@@ -3,4 +3,5 @@
 # platform: linux-64
 click=7.0
 rasterio=1.0
+gdal
 pip
