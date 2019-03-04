@@ -2,6 +2,6 @@
 # $ conda create --name <env> --file <this file>
 # platform: linux-64
 click=7.0
-rasterio=1.0
+rasterio=1.0.18
 gdal
 pip
