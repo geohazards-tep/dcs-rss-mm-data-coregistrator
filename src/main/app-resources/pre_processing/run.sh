@@ -12,8 +12,9 @@ source $_CIOP_APPLICATION_PATH/otb/otb_include.sh
 source $_CIOP_APPLICATION_PATH/gpt/snap_include.sh
 
 ## put /opt/anaconda/bin ahead to the PATH list to ensure gdal to point to the anaconda installation dir
-#export PATH=/opt/anaconda/bin:${PATH}
-export PATH=/home/rssuser/.conda/envs/csw/bin:${PATH}
+export PATH=/opt/anaconda/bin:${PATH}
+#export PATH=/home/rssuser/.conda/envs/csw/bin:${PATH}
+#export PATH=/home/rssuser/.conda/envs/l8reflectanceTesting/bin:${PATH}
 
 # define the exit codes
 SUCCESS=0
@@ -670,7 +671,7 @@ local geotiffProd=$1
 local outputfile=${TMPDIR}/$(basename ${geotiffProd})
 
 check_packed=$(gdalinfo $geotiffProd | grep COMPRESSION=LZW)
-if [ $check_packed == "COMPRESSION=LZW" ]; then
+if [[ $check_packed == "COMPRESSION=LZW" ]]; then
     ciop-log "INFO" "Unpacking GeoTiff file"
     gdal_translate ${geotiffProd} ${outputfile} -of GTiff
     [ $? -eq 0 ] || return $ERR_GDAL
@@ -1827,10 +1828,18 @@ if [ ${mission} = "Landsat-8" ]; then
     if [[ "${performOpticalCalibration}" = true ]]; then
         ciop-log "INFO" "Performing Optical Calibration for Landsat8..."
         L8_reflectance ${prodname} $( dirname ${prodname})
-        ls "${prodname}_TOA"/LC*_B[1-7]_TOA${ext} > $tifList
-#        ls "${prodname}"/LC*_B[8-9]${ext} >> $tifList
-#        ls "${prodname}"/LC*_B1[0,1]${ext} >> $tifList
-
+        metadatafile=$(ls ${prodname}/*_MTL.txt)
+        mv $metadatafile ${metadatafile//${prodname}/${prodname}_TOA}
+        b9=$(ls "${prodname}"/LC*_B9${ext})
+        mv "${b9}" ${b9//${prodname}/${prodname}_TOA}
+        rm -rf ${prodname}
+        mv ${prodname}_TOA ${prodname}
+        for toa in $(ls "${prodname}"); do
+            mv "${prodname}/$toa" "${prodname}/${toa//_TOA/}"
+        done
+        ls "${prodname}"/LC*_B[1-7]${ext} > $tifList
+#        ls "${prodname}"/LC*_B9${ext} >> $tifList
+        ls "${prodname}"/LC*_B1[0,1]${ext} >> $tifList
     fi
 elif [ ${mission} = "Kompsat-2" ]; then
     ext=".tif"
