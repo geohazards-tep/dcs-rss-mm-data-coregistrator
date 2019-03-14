@@ -11,7 +11,7 @@
     <version>2.0.0</version>
   </parent>
   <description>This service performs the coregistration of remote sensing data from different missions</description>
-  <version>1.1.9.3-SNAPSHOT</version>
+  <version>1.1.9.4-SNAPSHOT</version>
   <properties>
     <summary>Multi mission data co-registrator</summary>
     <description>This service performs the coregistration of remote sensing data from different missions</description>
