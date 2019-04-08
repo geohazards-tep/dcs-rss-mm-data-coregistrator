@@ -1,0 +1,119 @@
+<graph id="Graph">
+  <version>1.0</version>
+  <node id="Read">
+    <operator>Read</operator>
+    <sources/>
+    <parameters class="com.bc.ceres.binding.dom.XppDomElement">
+      <file>%%prodname%%</file>
+    </parameters>
+  </node>
+%%commentRsmpBegin%%  <node id="Resample">
+    <operator>Resample</operator>
+    <sources>
+      <sourceProduct refid="Read"/>
+    </sources>
+    <parameters class="com.bc.ceres.binding.dom.XppDomElement">
+      <referenceBand/>
+      <targetWidth/>
+      <targetHeight/>
+      <targetResolution>%%target_spacing%%</targetResolution>
+      <upsampling>Nearest</upsampling>
+      <downsampling>First</downsampling>
+      <flagDownsampling>First</flagDownsampling>
+      <resampleOnPyramidLevels>false</resampleOnPyramidLevels>
+    </parameters>
+  </node> %%commentRsmpEnd%%
+  <node id="Reproject">
+    <operator>Reproject</operator>
+    <sources>
+%%commentRsmpBegin%%      <sourceProduct refid="Resample"/> %%commentRsmpEnd%%
+%%commentReadSrcBegin%%   <sourceProduct refid="Read"/> %%commentReadSrcEnd%%
+    </sources>
+    <parameters class="com.bc.ceres.binding.dom.XppDomElement">
+      <wktFile/>
+      <crs>GEOGCS[&quot;WGS84(DD)&quot;, &#xd;
+  DATUM[&quot;WGS84&quot;, &#xd;
+    SPHEROID[&quot;WGS84&quot;, 6378137.0, 298.257223563]], &#xd;
+  PRIMEM[&quot;Greenwich&quot;, 0.0], &#xd;
+  UNIT[&quot;degree&quot;, 0.017453292519943295], &#xd;
+  AXIS[&quot;Geodetic longitude&quot;, EAST], &#xd;
+  AXIS[&quot;Geodetic latitude&quot;, NORTH]]</crs>
+      <resampling>Nearest</resampling>
+      <referencePixelX/>
+      <referencePixelY/>
+      <easting/>
+      <northing/>
+      <orientation/>
+      <pixelSizeX/>
+      <pixelSizeY/>
+      <width/>
+      <height/>
+      <tileSizeX/>
+      <tileSizeY/>
+      <orthorectify>false</orthorectify>
+      <elevationModelName/>
+      <noDataValue>NaN</noDataValue>
+      <includeTiePointGrids>true</includeTiePointGrids>
+      <addDeltaBands>false</addDeltaBands>
+    </parameters>
+  </node>
+%%commentSbsBegin%%  <node id="Subset">
+    <operator>Subset</operator>
+    <sources>
+      <sourceProduct refid="Reproject"/>
+    </sources>
+    <parameters class="com.bc.ceres.binding.dom.XppDomElement">
+      <sourceBands/>
+      <region/>
+      <geoRegion>%%subsettingBoxWKT%%</geoRegion>
+      <subSamplingX>1</subSamplingX>
+      <subSamplingY>1</subSamplingY>
+      <fullSwath>false</fullSwath>
+      <tiePointGridNames/>
+      <copyMetadata>true</copyMetadata>
+    </parameters>
+  </node> %%commentSbsEnd%%
+  <node id="BandSelect">
+    <operator>BandSelect</operator>
+    <sources>
+      %%commentSbsBegin%% <sourceProduct refid="Subset"/> %%commentSbsEnd%%
+      %%commentProjSrcBegin%% <sourceProduct refid="Reproject"/> %%commentProjSrcEnd%%
+    </sources>
+    <parameters class="com.bc.ceres.binding.dom.XppDomElement">
+      <selectedPolarisations/>
+      <sourceBands>%%sourceBandsList%%</sourceBands>
+      <bandNamePattern/>
+    </parameters>
+  </node>
+  <node id="Write">
+    <operator>Write</operator>
+    <sources>
+       <sourceProduct refid="BandSelect"/>
+    </sources>
+    <parameters class="com.bc.ceres.binding.dom.XppDomElement">
+      <file>%%outprod%%.dim</file>
+      <formatName>BEAM-DIMAP</formatName>
+    </parameters>
+  </node>
+  <applicationData id="Presentation">
+    <Description/>
+    <node id="Write">
+            <displayPosition x="455.0" y="135.0"/>
+    </node>
+    <node id="BandSelect">
+      <displayPosition x="400.0" y="136.0"/>
+    </node>
+    <node id="Subset">
+      <displayPosition x="327.0" y="136.0"/>
+    </node>
+    <node id="Reproject">
+      <displayPosition x="231.0" y="137.0"/>
+    </node>
+    <node id="Resample">
+      <displayPosition x="140.0" y="133.0"/>
+    </node>
+    <node id="Read">
+            <displayPosition x="37.0" y="134.0"/>
+    </node>
+  </applicationData>
+</graph>

@@ -11,27 +11,27 @@
     <version>2.0.0</version>
   </parent>
   <description>This service performs the coregistration of remote sensing data from different missions</description>
-  <version>1.0-BETA</version>
+  <version>1.1.9.5</version>
   <properties>
     <summary>Multi mission data co-registrator</summary>
     <description>This service performs the coregistration of remote sensing data from different missions</description>
-    <community>dcs-rss-mm-data-coregistrator</community>
-    <yumRepo>dcs-rss-mm-data-coregistrator</yumRepo>
+    <community>geohazards-tep</community>
+    <yumRepo>geohazards-tep</yumRepo>
   </properties>
   <scm>
-    <connection>scm:git:ssh://git@github.com/dcs-rss-mm-data-coregistrator/dcs-rss-mm-data-coregistrator</connection>
-    <developerConnection>scm:git:ssh://git@github.com/dcs-rss-mm-data-coregistrator/dcs-rss-mm-data-coregistrator</developerConnection>
-    <url>https://github.com/dcs-rss-mm-data-coregistrator/dcs-rss-mm-data-coregistrator</url>
+    <connection>scm:git:ssh://git@github.com/geohazards-tep/dcs-rss-mm-data-coregistrator</connection>
+    <developerConnection>scm:git:ssh://git@github.com/geohazards-tep/dcs-rss-mm-data-coregistrator</developerConnection>
+    <url>https://github.com/geohazards-tep/dcs-rss-mm-data-coregistrator</url>
     <tag>HEAD</tag>
   </scm>
   <profiles>
     <profile>
       <id>package-app</id>
       <activation>
-         <property>
-           <name>env</name>
-           <value>ci</value>
-         </property>
+        <property>
+          <name>env</name>
+          <value>ci</value>
+        </property>
       </activation>
       <build>
         <plugins>
@@ -47,8 +47,20 @@
                 <configuration>
                   <!-- Set here the dependencies installed with 'sudo yum install'-->
                   <requires>
-                    <require>bash</require>
+                    <require>snap = 5.0-1.el6</require>
+                    <require>OTB</require>
+                    <require>miniconda</require>
+                    <!--<require>snap6</require>-->
+                    <require>proj-devel</require>
+                    <require>openjpeg2</require>
                   </requires>
+                  <postinstallScriptlet combine.self="override">
+                    <scriptFile>${basedir}/src/main/scripts/post_install.sh</scriptFile>
+                    <fileEncoding>utf-8</fileEncoding>
+                  </postinstallScriptlet>
+                  <!--<postinstallScriptlet combine.self="override">-->
+                  <!--<script>conda update conda -y &amp;&amp; conda install &#45;&#45;file /application/dependencies/packages.list &amp;&amp; export PATH=/opt/anaconda/bin:$PATH &amp;&amp; pip install rio-toa</script>-->
+                  <!--</postinstallScriptlet>-->
                 </configuration>
               </execution>
             </executions>

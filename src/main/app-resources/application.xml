@@ -1,31 +1,57 @@
-<?xml version="1.0" encoding="us-ascii"?>
-<application xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" id="application">
+<?xml version="1.0" encoding="UTF-8"?>
+<application id="multi_mission_data_coregistrator">
   <jobTemplates>
-    <jobTemplate id="template_A">
-      <streamingExecutable>/application/node_A/run.sh</streamingExecutable>
-    </jobTemplate>
-    <jobTemplate id="template_B">
-      <streamingExecutable>/application/node_B/run.sh</streamingExecutable>
+    <jobTemplate id="pre_processing">
+      <streamingExecutable>/application/pre_processing/run.sh</streamingExecutable>
+      <defaultParameters>
+         <parameter id="slave" title="Slave product reference" abstract="Define the product(s) that will be co-registered together with master product" scope="runtime"></parameter>
+         <parameter id="performOpticalCalibration" title="Perform optical calibration" abstract="Choose if optical calibration is performed on the selected data sets." scope="runtime" maxOccurs="1">
+         	<options>
+                	<option>true</option>
+                        <option>false</option>
+                        <default>false</default>
+                </options>
+         </parameter>
+         <parameter id="performCropping" title="Perform data cropping" abstract="Choose if the selected data set have to be cropped according to the user defined AOI" scope="runtime" maxOccurs="1">
+         	<options>
+                	<option>true</option>
+                        <option>false</option>
+                        <default>false</default>
+                </options>
+         </parameter>
+         <parameter id="SubsetBoundingBox" title="Subset Bounding Box for Cropping" abstract="Define the area of interest for the data cropping [lon_min,lat_min,lon_max,lat_max]" scope="runtime" type="BoundingBoxData" minOccurs="1" maxOccurs="1">-180.0,-90.0,180.0,90.0</parameter>
+      </defaultParameters>
       <defaultJobconf>
-        <!-- By setting this property with value 1, the node will act as 'aggregator.
-             That is only one instance of the node will run on the cluster -->
         <property id="ciop.job.max.tasks">1</property>
+        <property id="mapred.task.timeout">9900000000</property>
+      </defaultJobconf>
+    </jobTemplate>
+    <jobTemplate id="data_stacking">
+      <streamingExecutable>/application/data_stacking/run.sh</streamingExecutable>
+      <defaultParameters>
+      </defaultParameters>
+      <defaultJobconf>
+        <property id="ciop.job.max.tasks">1</property>
+        <property id="mapred.task.timeout">9900000000</property>
       </defaultJobconf>
     </jobTemplate>
   </jobTemplates>
-    <workflow id="workflow" title="Simple workflow" abstract="Simple workflow based on the DCS Bash archetype">
+  <workflow id="multi-mission-data-coregistrator" title="Multi mission data co-registrator" abstract="This service performs the coregistration of remote sensing data from different missions">
     <workflowVersion>1.0</workflowVersion>
-    <node id="node_A">
-      <job id="template_A"/>
+    <node id="node_pre_processing">
+      <job id="pre_processing"/>
       <sources>
-        <source id="source" title="Simple string sources" abstract="List of comma-separated strings" refid="string:list" scope="runtime">input-1,input-2,input-3</source>
+         <source id="master" title="Master product reference" abstract="Select the master product that will be used as reference during coregistration" scope="runtime" refid="string:list" maxOccurs="1"></source>
       </sources>
+      <parameters/>
     </node>
-    <node id="node_B">
-      <job id="template_B"/>
+    <node id="node_data_stacking">
+      <job id="data_stacking"/>
       <sources>
-        <source refid="wf:node">node_A</source>
+        <source refid="wf:node">node_pre_processing</source>
       </sources>
+      <parameters/>
     </node>
   </workflow>
 </application>
+
