@@ -11,7 +11,7 @@
     <version>2.0.0</version>
   </parent>
   <description>This service performs the coregistration of remote sensing data from different missions</description>
-  <version>1.1.9.5-SNAPSHOT</version>
+  <version>1.1.9.5</version>
   <properties>
     <summary>Multi mission data co-registrator</summary>
     <description>This service performs the coregistration of remote sensing data from different missions</description>
@@ -28,10 +28,10 @@
     <profile>
       <id>package-app</id>
       <activation>
-         <property>
-           <name>env</name>
-           <value>ci</value>
-         </property>
+        <property>
+          <name>env</name>
+          <value>ci</value>
+        </property>
       </activation>
       <build>
         <plugins>
@@ -59,7 +59,7 @@
                     <fileEncoding>utf-8</fileEncoding>
                   </postinstallScriptlet>
                   <!--<postinstallScriptlet combine.self="override">-->
-                    <!--<script>conda update conda -y &amp;&amp; conda install &#45;&#45;file /application/dependencies/packages.list &amp;&amp; export PATH=/opt/anaconda/bin:$PATH &amp;&amp; pip install rio-toa</script>-->
+                  <!--<script>conda update conda -y &amp;&amp; conda install &#45;&#45;file /application/dependencies/packages.list &amp;&amp; export PATH=/opt/anaconda/bin:$PATH &amp;&amp; pip install rio-toa</script>-->
                   <!--</postinstallScriptlet>-->
                 </configuration>
               </execution>
