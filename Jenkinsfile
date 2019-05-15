@@ -5,7 +5,7 @@ pipeline {
   }
 
   environment {
-        PATH="/opt/anaconda/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/MacGPG2/bin"
+        PATH="/opt/anaconda/bin:$PATH"
   }
 
   agent {
@@ -19,7 +19,7 @@ pipeline {
     stage('Package & Dockerize') {
       steps {
         withMaven( maven: 'apache-maven-3.0.5' ) {
-            sh 'mvn -B deploy -Drelease=true'
+            sh 'mvn -B deploy'
         }
       }
     }
