@@ -11,7 +11,7 @@
     <version>3.0.1-docker</version>
   </parent>
   <description>This service performs the coregistration of remote sensing data from different missions</description>
-  <version>1.1.9.5</version>
+  <version>1.1.9.6</version>
   <properties>
     <summary>Multi mission data co-registrator</summary>
     <description>This service performs the coregistration of remote sensing data from different missions</description>
@@ -47,7 +47,7 @@
                 <configuration>
                   <!-- Set here the dependencies installed with 'sudo yum install'-->
                   <requires>
-                    <require>snap = 5.0-1.el6</require>
+                    <require>snap</require>
                     <require>OTB</require>
                     <require>miniconda</require>
                     <!--<require>snap6</require>-->
