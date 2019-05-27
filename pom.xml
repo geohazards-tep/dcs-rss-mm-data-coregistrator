@@ -28,10 +28,10 @@
     <profile>
       <id>package-app</id>
       <activation>
-         <property>
-           <name>env</name>
-           <value>ci</value>
-         </property>
+        <property>
+          <name>env</name>
+          <value>ci</value>
+        </property>
       </activation>
       <build>
         <plugins>
@@ -47,7 +47,7 @@
                 <configuration>
                   <!-- Set here the dependencies installed with 'sudo yum install'-->
                   <requires>
-                    <require>snap = 5.0-1.el6</require>
+                    <require>snap</require>
                     <require>OTB</require>
                     <require>miniconda</require>
                     <!--<require>snap6</require>-->
@@ -59,7 +59,7 @@
                     <fileEncoding>utf-8</fileEncoding>
                   </postinstallScriptlet>
                   <!--<postinstallScriptlet combine.self="override">-->
-                    <!--<script>conda update conda -y &amp;&amp; conda install &#45;&#45;file /application/dependencies/packages.list &amp;&amp; export PATH=/opt/anaconda/bin:$PATH &amp;&amp; pip install rio-toa</script>-->
+                  <!--<script>conda update conda -y &amp;&amp; conda install &#45;&#45;file /application/dependencies/packages.list &amp;&amp; export PATH=/opt/anaconda/bin:$PATH &amp;&amp; pip install rio-toa</script>-->
                   <!--</postinstallScriptlet>-->
                 </configuration>
               </execution>
