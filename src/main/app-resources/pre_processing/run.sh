@@ -681,9 +681,8 @@ function unpack_geotiff() {
 
 local geotiffProd=$1
 local outputfile=${TMPDIR}/$(basename ${geotiffProd})
-
 check_packed=$(gdalinfo $geotiffProd | grep COMPRESSION=LZW)
-if [[ $check_packed == "COMPRESSION=LZW" ]]; then
+if [[ $check_packed == *"COMPRESSION=LZW"* ]]; then
     ciop-log "INFO" "Unpacking GeoTiff file"
     gdal_translate ${geotiffProd} ${outputfile} -of GTiff
     [ $? -eq 0 ] || return $ERR_GDAL
