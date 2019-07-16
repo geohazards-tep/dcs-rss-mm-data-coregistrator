@@ -4,7 +4,7 @@
     <jobTemplate id="pre_processing">
       <streamingExecutable>/application/pre_processing/run.sh</streamingExecutable>
       <defaultParameters>
-         <parameter id="slave" title="Slave product reference" abstract="Define the product(s) that will be co-registered together with master product" scope="runtime"></parameter>
+         <parameter id="slave" title="Slave product reference" abstract="Define the product(s) that will be co-located together with master product" scope="runtime"></parameter>
          <parameter id="performOpticalCalibration" title="Perform optical calibration" abstract="Choose if optical calibration is performed on the selected data sets." scope="runtime" maxOccurs="1">
          	<options>
                 	<option>true</option>
@@ -12,14 +12,7 @@
                         <default>false</default>
                 </options>
          </parameter>
-         <parameter id="performCropping" title="Perform data cropping" abstract="Choose if the selected data set have to be cropped according to the user defined AOI" scope="runtime" maxOccurs="1">
-         	<options>
-                	<option>true</option>
-                        <option>false</option>
-                        <default>false</default>
-                </options>
-         </parameter>
-         <parameter id="SubsetBoundingBox" title="Subset Bounding Box for Cropping" abstract="Define the area of interest for the data cropping [lon_min,lat_min,lon_max,lat_max]" scope="runtime" type="BoundingBoxData" minOccurs="1" maxOccurs="1">-180.0,-90.0,180.0,90.0</parameter>
+         <parameter id="SubsetBoundingBox" title="Subset Bounding Box for Cropping" abstract="Define the area of interest for the data cropping [lon_min,lat_min,lon_max,lat_max]" scope="runtime" type="BoundingBoxData" minOccurs="0" maxOccurs="1">-180.0,-90.0,180.0,90.0</parameter>
       </defaultParameters>
       <defaultJobconf>
         <property id="ciop.job.max.tasks">1</property>
@@ -36,12 +29,12 @@
       </defaultJobconf>
     </jobTemplate>
   </jobTemplates>
-  <workflow id="multi-mission-data-coregistrator" title="Multi mission data co-registrator" abstract="This service performs the coregistration of remote sensing data from different missions">
+  <workflow id="multi-mission-data-coregistrator" title="Multimission Data Colocation" abstract="This service performs the colocation of remote sensing data from different missions">
     <workflowVersion>1.0</workflowVersion>
     <node id="node_pre_processing">
       <job id="pre_processing"/>
       <sources>
-         <source id="master" title="Master product reference" abstract="Select the master product that will be used as reference during coregistration" scope="runtime" refid="string:list" maxOccurs="1"></source>
+         <source id="master" title="Master product reference" abstract="Select the master product that will be used as reference during colocation" scope="runtime" refid="string:list" maxOccurs="1"></source>
       </sources>
       <parameters/>
     </node>
