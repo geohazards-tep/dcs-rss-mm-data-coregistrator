@@ -1051,17 +1051,19 @@ function main() {
     ciop-log "DEBUG" "The performOpticalCalibration flag is set to ${performOpticalCalibration}"
 
     # retrieve the parameters value from workflow or job default value
-    performCropping="`ciop-getparam performCropping`"
-    # log the value, it helps debugging.
-    # the log entry is available in the process stderr
-    ciop-log "DEBUG" "The performCropping flag is set to ${performCropping}"
-
-    # retrieve the parameters value from workflow or job default value
     SubsetBoundingBox="`ciop-getparam SubsetBoundingBox`"
     # log the value, it helps debugging.
     # the log entry is available in the process stderr
     ciop-log "DEBUG" "The selected subset bounding box data is: ${SubsetBoundingBox}"
 
+    if [ -z "$SubsetBoundingBox" ] ; then
+	performCropping=false
+    else
+	performCropping=true
+    fi
+    ciop-log "DEBUG" "The performCropping flag is set to ${performCropping}"
+
+    ciop-log "DEBUG" "The selected subset bounding box data is: ${SubsetBoundingBox}"
     ### SUBSETTING BOUNDING BOX DEFINITION IN WKT FORMAT
     local subsettingBoxWKT="POLYGON ((-180 -90, 180 -90, 180 90, -180 90, -180 -90))"
     if [ "${performCropping}" = true ] ; then
@@ -1078,7 +1080,6 @@ function main() {
         # log the value, it helps debugging.
         # the log entry is available in the process stderr
         ciop-log "DEBUG" "WKT subsettingBox = ${subsettingBoxWKT}"
-
     fi
 
     pixelSpacingMaster=""
