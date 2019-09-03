@@ -122,13 +122,13 @@ function check_product_type() {
   fi
 
   if [ ${mission} = "Kompsat-2" ]; then
-      prodTypeName=$(ls ${retrievedProduct}/*/*.tif | head -1 | sed -n -e 's|^.*_\(.*\).tif$|\1|p')
+      prodTypeName=$(find ${retrievedProduct}/ -name '*.tif' | head -1 | sed -n -e 's|^.*_\(.*\).tif$|\1|p')
       [[ -z "$prodTypeName" ]] && return ${ERR_GETPRODTYPE}
       [[ "$prodTypeName" != "1G" ]] && return $ERR_WRONGPRODTYPE
   fi
 
   if [ ${mission} = "Kompsat-3"  ]; then
-      prodTypeName=$(ls ${retrievedProduct}/*/*.tif | head -1 | sed -n -e 's|^.*_\(.*\)_[A-Z].tif$|\1|p')
+      prodTypeName=$(find ${retrievedProduct}/ -name '*.tif' | head -1 | sed -n -e 's|^.*_\(.*\)_[A-Z].tif$|\1|p')
       [[ -z "$prodTypeName" ]] && return ${ERR_GETPRODTYPE}
       [[ "$prodTypeName" != "L1G" ]] && return $ERR_WRONGPRODTYPE
   fi
@@ -140,7 +140,7 @@ function check_product_type() {
   fi
 
   if [ ${mission} = "RapidEye"  ]; then
-      prodTypeName=$(ls ${retrievedProduct}/*.tif | head -1 | sed -n -e 's/.*\([0-9][A-Z]*\)-.*/\1/p')
+      prodTypeName=$(find ${retrievedProduct}/ -name '*.tif' | head -1 | sed -n -e 's/.*\([0-9][A-Z]*\)-.*/\1/p')
       [[ -z "$prodTypeName" ]] && return ${ERR_GETPRODTYPE}
       [[ "$prodTypeName" != "3A" ]] && return $ERR_WRONGPRODTYPE
   fi
@@ -299,6 +299,7 @@ function mission_prod_retrieval(){
         [ "${prod_basename_substr_3}" = "K3_" ] && mission="Kompsat-3"
         [ "${prod_basename_substr_3}" = "LC8" ] && mission="Landsat-8"
         [ "${prod_basename_substr_4}" = "LS08" ] && mission="Landsat-8"
+        [ "${prod_basename_substr_4}" = "LC08" ] && mission="Landsat-8"
         [ "${prod_basename_substr_4}" = "MSC_" ] && mission="Kompsat-2"
         [ "${prod_basename_substr_4}" = "FCGC" ] && mission="PLEIADES"
         [ "${prod_basename_substr_5}" = "U2007" ] && mission="UK-DMC2"
