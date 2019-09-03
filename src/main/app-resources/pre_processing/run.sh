@@ -719,7 +719,7 @@ function get_num_tiles() {
 local prodname=$1
 spot_xml=$(find ${prodname}/ -name 'DIM_*MS_*.XML')
 numTiles=$(sed -n -e 's|^.*<NTILES>\(.*\)</NTILES>$|\1|p' ${spot_xml})
-[ -z "$numTiles" ] && return $ERR_GETTILENUM || echo ${numTiles}
+[ -z "$numTiles" ] && echo 1 || echo ${numTiles}
 }
 
 
