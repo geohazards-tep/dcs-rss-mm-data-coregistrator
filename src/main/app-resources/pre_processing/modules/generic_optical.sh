@@ -99,7 +99,7 @@ elif [ ${mission} = "Kompsat-3" ]; then
     #Optical Calibration
     if [[ "${performOpticalCalibration}" = true ]]; then
         #get gain and bias values for all bands in dim file
-        cd ${prodname}/K3*
+        cd ${prodname}
         k3gains='55.2181115406:39.3545848091:76.9230769231:49.4315373208'
         k3bias='0.0 : 0.0 : 0.0 : 0.0'
         k3illuminations='2001:1875:1027:1525'
