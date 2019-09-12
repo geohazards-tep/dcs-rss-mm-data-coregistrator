@@ -128,6 +128,11 @@ local target_spacing=$( get_greater_pixel_spacing ${pixelSpacing} ${pixelSpacing
 local performResample=""
 if (( $(bc <<< "$target_spacing != $pixelSpacing") )) ; then
     performResample="true"
+    # Temporary solution: Limit the pixel size to 1m in order to prevent memory issues.
+    if (( $(bc <<< "$pixelSpacing < 1") )) ; then
+        local pixelSpacing="1 m"
+        local target_spacing=$( get_greater_pixel_spacing ${pixelSpacing} ${pixelSpacingMaster} )
+    fi
 else
     performResample="false"
 fi
