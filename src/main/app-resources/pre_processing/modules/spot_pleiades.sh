@@ -38,36 +38,39 @@ if [[ -d "${prodname}" ]]; then
   for prodId in `seq 0 $numProd`; do
     currentProd=${jp2_product_arr[$prodId]}
     if [[ "${performOpticalCalibration}" = true ]]; then
-        outputfile=$( calibrate_optical_TOA ${currentProd} .JP2 .tif)
-    else
-        outputfile="${currentProd%.JP2}.tif"
-        gdal_translate ${currentProd} ${outputfile} -of GTiff
+        calibrate_optical_TOA ${currentProd} .JP2 .JP2  #&> /dev/null
+        # check the exit code
+        [ $? -eq 0 ] || return $ERR_CALIB
     fi
+#    gdal_translate ${currentProd} ${outputfile} -of GTiff
+    outputfile="${currentProd%.JP2}.JP2"
     ciop-log "DEBUG" "Output file is ${outputfile}"
   done
-  imgFiles=$(find $( pwd )/ -name 'IMG_*MS*_R?C?.tif')
+  imgFiles=$(find $( pwd )/ -name 'IMG_*MS*_R?C?.JP2')
   outputCal=${outputfile}
   #If tiles exist merge all tiles
   tilesNum=$( get_num_tiles ${prodname} )
   if [ ${tilesNum} -gt 1 ]; then
       ciop-log "INFO" "The image is divided into ${tilesNum} tiles"
       imgFile1=(${imgFiles})
-      untiledVrtFile="${imgFile1%_R?C?.tif}.vrt"
+      untiledVrtFile="${imgFile1%_R?C?.JP2}.vrt"
       ciop-log "INFO" "Performing image fusion to ${untiledVrtFile}"
       gdalbuildvrt ${untiledVrtFile} ${imgFiles}
-      outimgFile="${untiledVrtFile%.vrt}.tif"
-      gdal_translate ${untiledVrtFile} ${outimgFile} -of GTiff
+      outimgFile="${untiledVrtFile%.vrt}.JP2"
+      gdal_translate ${untiledVrtFile} ${outimgFile} -of JPEG2000
       outputCal=${outimgFile}
   fi
 fi
 
 
 # set output calibrated filename
-outputCalDIM="${outputCal%.tif}.dim"
+outputCalDIM="${outputCal%.JP2}.dim"
 ciop-log "DEBUG" "The dim file is ${outputCalDIM}"
 # convert tif to beam dimap format
 ciop-log "INFO" "Invoking SNAP-pconvert on the generated request file for tif to dim conversion"
-pconvert -f dim ${outputCal}
+pconvert -f dim -d ${outputCal} &> /dev/null
+# check the exit code
+[ $? -eq 0 ] || return $ERR_PCONVERT
 # remove intermediate file
 rm ${outputCal}
 currentBandsList=$( xmlstarlet sel -t -v "/Dimap_Document/Image_Interpretation/Spectral_Band_Info/BAND_NAME" ${outputCalDIM} )
@@ -128,6 +131,11 @@ local target_spacing=$( get_greater_pixel_spacing ${pixelSpacing} ${pixelSpacing
 local performResample=""
 if (( $(bc <<< "$target_spacing != $pixelSpacing") )) ; then
     performResample="true"
+    # Temporary solution: Limit the pixel size to 1m in order to prevent memory issues.
+    if (( $(bc <<< "$pixelSpacing < 1") )) ; then
+        local pixelSpacing="1 m"
+        local target_spacing=$( get_greater_pixel_spacing ${pixelSpacing} ${pixelSpacingMaster} )
+    fi
 else
     performResample="false"
 fi

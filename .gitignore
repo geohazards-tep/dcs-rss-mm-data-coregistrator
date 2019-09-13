@@ -65,3 +65,4 @@ src/main/app-resources.bk13mar2019/pre_processing/templates/snap_request_rsmpl_r
 src/main/app-resources.bk13mar2019/pre_processing/templates/snap_request_s1.xml
 src/main/app-resources.bk13mar2019/pre_processing/templates/snap_request_stack.xml
 .idea/vcs.xml
+src/main/app-resources/pre_processing/modules/spot_pleiades.sh.solo
