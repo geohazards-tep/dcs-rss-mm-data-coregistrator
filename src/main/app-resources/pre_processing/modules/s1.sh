@@ -18,7 +18,9 @@ unzippedFolder=$(ls $retrievedProduct)
 # the log entry is available in the process stderr
 ciop-log "DEBUG" "unzippedFolder: ${unzippedFolder}"
 # retrieved product pointing to the unzipped folder
-prodname=$retrievedProduct/$unzippedFolder
+#prodname=$retrievedProduct/$unzippedFolder
+prodname=$(find ${retrievedProduct} -name "$(basename ${retrievedProduct})")
+prodname=$(cut -d' ' -f2 <<<${prodname})
 
 outProdBasename=$(basename ${prodname})_pre_proc
 outProd=${TMPDIR}/${outProdBasename}
@@ -115,6 +117,7 @@ sed -e "s|%%prodname%%|${prodname}|g" \
 -e "s|%%commentDbSrcBegin%%|${commentDbSrcBegin}|g" \
 -e "s|%%outprod%%|${outprod}|g" \
 -e "s|%%commentDbSrcEnd%%|${commentDbSrcEnd}|g"  $SNAP_gpt_template > $snap_request_filename
+
 
     [ $? -eq 0 ] && {
         echo "${snap_request_filename}"
