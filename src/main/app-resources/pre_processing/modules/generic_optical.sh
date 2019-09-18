@@ -67,7 +67,8 @@ if [ ${mission} = "Landsat-8" ]; then
     fi
 elif [ ${mission} = "Kompsat-2" ]; then
     ext=".tif"
-    ls "${prodname}"/*/MSC_*[R,G,B,N]_1G${ext} > $tifList
+#    ls "${prodname}"/*/MSC_*[R,G,B,N]_1G${ext} > $tifList
+    find "${prodname}"/ -name "MSC_*[R,G,B,N]_1G${ext}" > $tifList
     #Optical Calibration
     if [[ "${performOpticalCalibration}" = true ]]; then
         #get gain and bias values for all bands in dim file
@@ -94,11 +95,11 @@ elif [ ${mission} = "Kompsat-2" ]; then
     fi
 elif [ ${mission} = "Kompsat-3" ]; then
     ext=".tif"
-    ls "${prodname}"/*/K3_*_L1G_[R,G,B,N]*${ext} > $tifList
+    find "${prodname}"/ -name "K3_*_L1G_[R,G,B,N]*${ext}" > $tifList
     #Optical Calibration
     if [[ "${performOpticalCalibration}" = true ]]; then
         #get gain and bias values for all bands in dim file
-        cd ${prodname}/K3*
+        cd ${prodname}
         k3gains='55.2181115406:39.3545848091:76.9230769231:49.4315373208'
         k3bias='0.0 : 0.0 : 0.0 : 0.0'
         k3illuminations='2001:1875:1027:1525'
