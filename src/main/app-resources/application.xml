@@ -29,7 +29,7 @@
       </defaultJobconf>
     </jobTemplate>
   </jobTemplates>
-  <workflow id="multi-mission-data-coregistrator" title="Multimission Data Colocation" abstract="This service performs the colocation of remote sensing data from different missions">
+  <workflow id="multi-mission-data-coregistrator" title="Multimission Data Colocation" abstract="This service performs the colocation of remote sensing data from different missions. The service supports optical and SAR detected products from the following missions: SPOT6/7, S-2 L1C, Landsat-8 L1TP/L1T, UK-DMC2 L1T, Kompsat-2/3 L1G, Pleiades 1A/1B, KANOPUSV/Resurs-P, S-1GRD, GF-2 L2A, Rapideye L3AVRRS1 L2B, VRSS1.">
     <workflowVersion>1.0</workflowVersion>
     <node id="node_pre_processing">
       <job id="pre_processing"/>
